@@ -2,6 +2,18 @@ const { verifyToken } = require('../utils/jwt');
 const prisma = require('../config/database');
 
 /**
+ * Check database connection
+ */
+async function checkDatabaseConnection() {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+
+/**
  * Authentication middleware
  * Reads JWT from cookie, verifies token, attaches user to request
  */
@@ -19,6 +31,15 @@ async function authenticate(req, res, next) {
 
     // Verify token
     const decoded = verifyToken(token);
+
+    // Check database connection first
+    const dbConnected = await checkDatabaseConnection();
+    if (!dbConnected) {
+      return res.status(503).json({
+        success: false,
+        message: 'Service temporarily unavailable. Please try again later.',
+      });
+    }
 
     // Find user in database
     const user = await prisma.user.findUnique({

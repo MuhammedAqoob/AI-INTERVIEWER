@@ -4,11 +4,32 @@ const { generateToken } = require('../utils/jwt');
 const { cookieOptions } = require('../config/jwt');
 
 /**
+ * Check database connection
+ */
+async function checkDatabaseConnection() {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+
+/**
  * Register a new user
  * POST /api/auth/register
  */
 async function register(req, res, next) {
   try {
+    // Check database connection first
+    const dbConnected = await checkDatabaseConnection();
+    if (!dbConnected) {
+      return res.status(503).json({
+        success: false,
+        message: 'Service temporarily unavailable. Please try again later.',
+      });
+    }
+
     const { username, password } = req.body;
 
     // Check if username already exists
@@ -65,6 +86,15 @@ async function register(req, res, next) {
  */
 async function login(req, res, next) {
   try {
+    // Check database connection first
+    const dbConnected = await checkDatabaseConnection();
+    if (!dbConnected) {
+      return res.status(503).json({
+        success: false,
+        message: 'Service temporarily unavailable. Please try again later.',
+      });
+    }
+
     const { username, password } = req.body;
 
     // Find user by username
