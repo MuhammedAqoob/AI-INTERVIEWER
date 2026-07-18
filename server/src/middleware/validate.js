@@ -1,8 +1,7 @@
-const { body, validationResult } = require('express-validator');
+const { body, query, validationResult } = require('express-validator');
+const { BRANCH_VALUES } = require('../constants/branches');
+const { INTERVIEW_TYPE_VALUES, BRANCH_REQUIRED_TYPES } = require('../constants/interviewTypes');
 
-/**
- * Handle validation errors
- */
 function handleValidationErrors(req, res, next) {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -18,9 +17,6 @@ function handleValidationErrors(req, res, next) {
   next();
 }
 
-/**
- * Registration validation rules
- */
 const registerValidation = [
   body('username')
     .trim()
@@ -38,9 +34,6 @@ const registerValidation = [
   handleValidationErrors,
 ];
 
-/**
- * Login validation rules
- */
 const loginValidation = [
   body('username')
     .trim()
@@ -52,7 +45,86 @@ const loginValidation = [
   handleValidationErrors,
 ];
 
+const startInterviewValidation = [
+  body('interviewType')
+    .notEmpty()
+    .withMessage('Interview type is required')
+    .isIn(INTERVIEW_TYPE_VALUES)
+    .withMessage(`Interview type must be one of: ${INTERVIEW_TYPE_VALUES.join(', ')}`),
+  body('branch')
+    .custom((value, { req }) => {
+      if (BRANCH_REQUIRED_TYPES.includes(req.body.interviewType)) {
+        if (!value) {
+          throw new Error('Branch is required for Technical interviews');
+        }
+        if (!BRANCH_VALUES.includes(value)) {
+          throw new Error(`Branch must be one of: ${BRANCH_VALUES.join(', ')}`);
+        }
+      }
+      return true;
+    }),
+  handleValidationErrors,
+];
+
+const answerValidation = [
+  body('sessionId')
+    .notEmpty()
+    .withMessage('Session ID is required')
+    .isUUID()
+    .withMessage('Session ID must be a valid UUID'),
+  body('answer')
+    .trim()
+    .notEmpty()
+    .withMessage('Answer is required')
+    .isLength({ min: 1, max: 5000 })
+    .withMessage('Answer must be between 1 and 5000 characters'),
+  handleValidationErrors,
+];
+
+const endInterviewValidation = [
+  body('sessionId')
+    .notEmpty()
+    .withMessage('Session ID is required')
+    .isUUID()
+    .withMessage('Session ID must be a valid UUID'),
+  handleValidationErrors,
+];
+
+const refreshInterviewValidation = [
+  body('interviewType')
+    .notEmpty()
+    .withMessage('Interview type is required')
+    .isIn(INTERVIEW_TYPE_VALUES)
+    .withMessage(`Interview type must be one of: ${INTERVIEW_TYPE_VALUES.join(', ')}`),
+  body('branch')
+    .custom((value, { req }) => {
+      if (BRANCH_REQUIRED_TYPES.includes(req.body.interviewType)) {
+        if (!value) {
+          throw new Error('Branch is required for Technical interviews');
+        }
+        if (!BRANCH_VALUES.includes(value)) {
+          throw new Error(`Branch must be one of: ${BRANCH_VALUES.join(', ')}`);
+        }
+      }
+      return true;
+    }),
+  handleValidationErrors,
+];
+
+const validateSessionIdQuery = [
+  query('sessionId')
+    .optional()
+    .isUUID()
+    .withMessage('Session ID must be a valid UUID'),
+  handleValidationErrors,
+];
+
 module.exports = {
   registerValidation,
   loginValidation,
+  startInterviewValidation,
+  answerValidation,
+  endInterviewValidation,
+  refreshInterviewValidation,
+  validateSessionIdQuery,
 };

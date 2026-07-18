@@ -1,6 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -11,11 +8,53 @@ datasource db {
 }
 
 model User {
-  id            String   @id @default(uuid()) @db.Uuid
-  username      String   @unique @db.VarChar(20)
-  passwordHash  String   @map("password_hash") @db.VarChar(255)
-  role          String   @default("USER") @db.VarChar(20)
-  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  id            String             @id @default(uuid()) @db.Uuid
+  username      String             @unique @db.VarChar(20)
+  passwordHash  String             @map("password_hash") @db.VarChar(255)
+  role          String             @default("USER") @db.VarChar(20)
+  createdAt     DateTime           @default(now()) @map("created_at") @db.Timestamptz()
+  userStats     UserStats?
+  interviews    InterviewSession[]
 
   @@map("users")
+}
+
+model UserStats {
+  id              String    @id @default(uuid()) @db.Uuid
+  userId          String    @unique @map("user_id") @db.Uuid
+  livesRemaining  Int       @default(5) @map("lives_remaining")
+  livesResetAt    DateTime  @map("lives_reset_at")
+  currentStreak   Int       @default(0) @map("current_streak")
+  bestStreak      Int       @default(0) @map("best_streak")
+  lastInterviewAt DateTime? @map("last_interview_at")
+  totalInterviews Int       @default(0) @map("total_interviews")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("user_stats")
+}
+
+model InterviewSession {
+  id               String    @id @default(uuid()) @db.Uuid
+  userId           String    @map("user_id") @db.Uuid
+  branch           String?   @db.VarChar(50)
+  interviewType    String    @map("interview_type") @db.VarChar(50)
+  status           String    @db.VarChar(20)
+  difficulty       String    @map("current_difficulty") @db.VarChar(20)
+  conversation     Json      @default("[]")
+  currentQuestion  Json?     @map("current_question")
+  accumulatedScore Int       @default(0) @map("accumulated_score")
+  totalQuestions   Int       @default(0) @map("total_questions")
+  lifeConsumed     Boolean   @default(false) @map("life_consumed")
+  expiresAt        DateTime  @map("expires_at") @db.Timestamptz()
+  startedAt        DateTime  @default(now()) @map("started_at") @db.Timestamptz()
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
+  endedAt          DateTime? @map("ended_at") @db.Timestamptz()
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([userId, status])
+  @@index([userId, interviewType, branch])
+  @@map("interview_sessions")
 }
