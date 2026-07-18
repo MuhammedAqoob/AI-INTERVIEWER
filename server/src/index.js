@@ -1,6 +1,9 @@
 const express = require('express');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
+const rateLimit=require("express-rate-limit");
+const helmet = require('helmet')
+const morgan = require("morgan");
 require('dotenv').config();
 
 const corsOptions = require('./config/cors');
@@ -14,6 +17,14 @@ const PORT = process.env.PORT || 5000;
 app.use(cors(corsOptions));
 app.use(express.json());
 app.use(cookieParser());
+app.use(helmet())
+app.use(morgan("dev"));
+
+// Request logger
+app.use((req, res, next) => {
+  console.log(`${req.method} ${req.originalUrl}`);
+  next();
+});
 
 // Routes
 app.use('/api/auth', authRoutes);

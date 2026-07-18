@@ -2,6 +2,8 @@ const prisma = require('../config/database');
 const { hashPassword, comparePassword } = require('../utils/password');
 const { generateToken } = require('../utils/jwt');
 const { cookieOptions } = require('../config/jwt');
+const rateLimit=require("express-rate-limit");
+
 
 /**
  * Check database connection
@@ -173,9 +175,21 @@ async function getMe(req, res) {
   });
 }
 
+const loginLimiter=rateLimit({
+
+windowMs:15*60*1000,
+
+max:5,
+
+message:"Too many login attempts"
+
+});
+
 module.exports = {
   register,
   login,
   logout,
   getMe,
+  loginLimiter
 };
+
