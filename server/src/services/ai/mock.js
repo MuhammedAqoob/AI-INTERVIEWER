@@ -1,4 +1,5 @@
 const { DIFFICULTY } = require('../../constants/difficulty');
+const promptBuilder = require('../promptBuilder');
 
 const EASY_FOLLOW_UPS = [
   'Can you elaborate on that further?',
@@ -43,7 +44,7 @@ function getLastUserAnswer(conversationHistory) {
   return '';
 }
 
-function generateInterviewTurn({ branch, interviewType, conversationHistory, difficulty }) {
+function generateInterviewTurn({ branch, interviewType, conversationHistory, difficulty, resumeSummary }) {
   const lastAnswer = getLastUserAnswer(conversationHistory);
   const answerLength = lastAnswer.length;
 
@@ -102,4 +103,29 @@ function generateInterviewTurn({ branch, interviewType, conversationHistory, dif
   };
 }
 
-module.exports = { generateInterviewTurn };
+function generateFirstQuestion({ branch, interviewType, difficulty, resumeSummary }) {
+  const nextQuestionPool = DIFFICULTY_QUESTIONS[difficulty] || DIFFICULTY_QUESTIONS[DIFFICULTY.EASY];
+  const question = pickRandom(nextQuestionPool);
+
+  return {
+    content: question,
+    difficulty,
+  };
+}
+
+async function generateStructuredResponse({ systemPrompt, userPrompt }) {
+  return {
+    score: 7,
+    feedback: 'Mock provider response. Replace with real AI provider.',
+    betterAnswer: null,
+    question: 'Can you tell me about your experience?',
+    difficulty: DIFFICULTY.EASY,
+    summary: 'Mock resume summary. Replace with real AI provider for actual resume parsing.',
+  };
+}
+
+module.exports = {
+  generateInterviewTurn,
+  generateFirstQuestion,
+  generateStructuredResponse,
+};

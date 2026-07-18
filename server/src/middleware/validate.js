@@ -1,6 +1,7 @@
 const { body, query, validationResult } = require('express-validator');
 const { BRANCH_VALUES } = require('../constants/branches');
 const { INTERVIEW_TYPE_VALUES, BRANCH_REQUIRED_TYPES } = require('../constants/interviewTypes');
+const { DIFFICULTY_VALUES } = require('../constants/difficulty');
 
 function handleValidationErrors(req, res, next) {
   const errors = validationResult(req);
@@ -63,6 +64,10 @@ const startInterviewValidation = [
       }
       return true;
     }),
+  body('difficulty')
+    .optional()
+    .isIn(DIFFICULTY_VALUES)
+    .withMessage(`Difficulty must be one of: ${DIFFICULTY_VALUES.join(', ')}`),
   handleValidationErrors,
 ];
 
@@ -108,6 +113,18 @@ const refreshInterviewValidation = [
       }
       return true;
     }),
+  body('difficulty')
+    .optional()
+    .isIn(DIFFICULTY_VALUES)
+    .withMessage(`Difficulty must be one of: ${DIFFICULTY_VALUES.join(', ')}`),
+  handleValidationErrors,
+];
+
+const startResumeInterviewValidation = [
+  body('difficulty')
+    .optional()
+    .isIn(DIFFICULTY_VALUES)
+    .withMessage(`Difficulty must be one of: ${DIFFICULTY_VALUES.join(', ')}`),
   handleValidationErrors,
 ];
 
@@ -123,6 +140,7 @@ module.exports = {
   registerValidation,
   loginValidation,
   startInterviewValidation,
+  startResumeInterviewValidation,
   answerValidation,
   endInterviewValidation,
   refreshInterviewValidation,

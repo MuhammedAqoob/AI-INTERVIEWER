@@ -4,6 +4,7 @@ const {
   getSession,
   getActiveSessions,
   start,
+  startResume,
   answer,
   end,
   refresh,
@@ -11,6 +12,7 @@ const {
 const authenticate = require('../middleware/authenticate');
 const {
   startInterviewValidation,
+  startResumeInterviewValidation,
   answerValidation,
   endInterviewValidation,
   refreshInterviewValidation,
@@ -23,6 +25,7 @@ const {
   interviewRefreshLimiter,
   interviewStatusLimiter,
 } = require('../middleware/rateLimiter');
+const { upload, handleMulterError } = require('../middleware/upload');
 
 const router = express.Router();
 
@@ -38,6 +41,16 @@ router.post(
   interviewStartLimiter,
   startInterviewValidation,
   start
+);
+
+router.post(
+  '/start-resume',
+  authenticate,
+  interviewStartLimiter,
+  upload.single('resume'),
+  handleMulterError,
+  startResumeInterviewValidation,
+  startResume
 );
 
 router.post(

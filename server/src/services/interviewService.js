@@ -3,11 +3,14 @@ const questionProvider = require('./questionProvider');
 const aiProvider = require('./ai');
 const statsService = require('./statsService');
 const { SESSION_STATUS } = require('../constants/sessionStatus');
+const { INTERVIEW_TYPES, RESUME_SUPPORTED_TYPES } = require('../constants/interviewTypes');
+const { DIFFICULTY } = require('../constants/difficulty');
 const AppError = require('../utils/AppError');
 
 const SESSION_EXPIRY_HOURS = 24;
 const MAX_QUESTIONS = parseInt(process.env.MAX_INTERVIEW_QUESTIONS, 10) || 10;
 const MAX_ACTIVE_SESSIONS = 5;
+const DEFAULT_DIFFICULTY = DIFFICULTY.EASY;
 
 const processingSessions = new Map();
 
@@ -31,6 +34,7 @@ function serializeSession(session) {
     accumulatedScore: session.accumulatedScore,
     totalQuestions: session.totalQuestions,
     lifeConsumed: session.lifeConsumed,
+    resumeSummary: session.resumeSummary || null,
     status: session.status,
     startedAt: session.startedAt,
     expiresAt: session.expiresAt,
@@ -80,7 +84,7 @@ async function findActiveSession(userId, interviewType, branch) {
   return session;
 }
 
-async function startInterview(userId, { interviewType, branch }) {
+async function startInterview(userId, { interviewType, branch, difficulty }) {
   const existingSession = await findActiveSession(userId, interviewType, branch);
 
   if (existingSession) {
@@ -98,6 +102,7 @@ async function startInterview(userId, { interviewType, branch }) {
       accumulatedScore: existingSession.accumulatedScore,
       totalQuestions: existingSession.totalQuestions,
       lifeConsumed: existingSession.lifeConsumed,
+      resumeSummary: existingSession.resumeSummary || null,
       isResumed: true,
       expiresAt: existingSession.expiresAt,
     };
@@ -111,6 +116,7 @@ async function startInterview(userId, { interviewType, branch }) {
     );
   }
 
+  const selectedDifficulty = difficulty || DEFAULT_DIFFICULTY;
   const firstQuestion = questionProvider.getRandomQuestion(branch, interviewType);
 
   const session = await prisma.interviewSession.create({
@@ -119,7 +125,7 @@ async function startInterview(userId, { interviewType, branch }) {
       branch: branch || null,
       interviewType,
       status: SESSION_STATUS.ACTIVE,
-      difficulty: firstQuestion.difficulty,
+      difficulty: firstQuestion.difficulty || selectedDifficulty,
       conversation: [
         { role: 'assistant', content: firstQuestion.content },
       ],
@@ -141,6 +147,89 @@ async function startInterview(userId, { interviewType, branch }) {
     accumulatedScore: 0,
     totalQuestions: 1,
     lifeConsumed: false,
+    resumeSummary: null,
+    isResumed: false,
+    expiresAt: session.expiresAt,
+  };
+}
+
+async function startResumeInterview(userId, { difficulty, resumeSummary }) {
+  const existingActive = await prisma.interviewSession.findFirst({
+    where: {
+      userId,
+      interviewType: INTERVIEW_TYPES.RESUME,
+      status: SESSION_STATUS.ACTIVE,
+    },
+    orderBy: { startedAt: 'desc' },
+  });
+
+  if (existingActive && !isExpired(existingActive.expiresAt)) {
+    const conversation = Array.isArray(existingActive.conversation)
+      ? existingActive.conversation
+      : [];
+
+    return {
+      sessionId: existingActive.id,
+      interviewType: existingActive.interviewType,
+      branch: null,
+      conversation,
+      currentQuestion: existingActive.currentQuestion,
+      difficulty: existingActive.difficulty,
+      accumulatedScore: existingActive.accumulatedScore,
+      totalQuestions: existingActive.totalQuestions,
+      lifeConsumed: existingActive.lifeConsumed,
+      resumeSummary: existingActive.resumeSummary || null,
+      isResumed: true,
+      expiresAt: existingActive.expiresAt,
+    };
+  }
+
+  const activeCount = await countActiveSessions(userId);
+  if (activeCount >= MAX_ACTIVE_SESSIONS) {
+    throw new AppError(
+      'Maximum active interview sessions reached. Delete or finish an existing session.',
+      409
+    );
+  }
+
+  const selectedDifficulty = difficulty || DEFAULT_DIFFICULTY;
+
+  const firstQuestion = await aiProvider.generateFirstQuestion({
+    interviewType: INTERVIEW_TYPES.RESUME,
+    difficulty: selectedDifficulty,
+    resumeSummary,
+  });
+
+  const session = await prisma.interviewSession.create({
+    data: {
+      userId,
+      branch: null,
+      interviewType: INTERVIEW_TYPES.RESUME,
+      status: SESSION_STATUS.ACTIVE,
+      difficulty: firstQuestion.difficulty || selectedDifficulty,
+      conversation: [
+        { role: 'assistant', content: firstQuestion.content },
+      ],
+      currentQuestion: firstQuestion,
+      accumulatedScore: 0,
+      totalQuestions: 1,
+      lifeConsumed: false,
+      resumeSummary,
+      expiresAt: getExpiryDate(),
+    },
+  });
+
+  return {
+    sessionId: session.id,
+    interviewType: INTERVIEW_TYPES.RESUME,
+    branch: null,
+    conversation: session.conversation,
+    currentQuestion: session.currentQuestion,
+    difficulty: session.difficulty,
+    accumulatedScore: 0,
+    totalQuestions: 1,
+    lifeConsumed: false,
+    resumeSummary,
     isResumed: false,
     expiresAt: session.expiresAt,
   };
@@ -188,6 +277,7 @@ async function submitAnswer(userId, { sessionId, answer }) {
       interviewType: session.interviewType,
       conversationHistory: conversation,
       difficulty: session.difficulty,
+      resumeSummary: session.resumeSummary || undefined,
     });
 
     const newAccumulatedScore = session.accumulatedScore + aiResult.evaluation.score;
@@ -313,7 +403,7 @@ async function endInterview(userId, sessionId) {
   };
 }
 
-async function refreshInterview(userId, { interviewType, branch }) {
+async function refreshInterview(userId, { interviewType, branch, difficulty }) {
   const activeSession = await findActiveSession(userId, interviewType, branch);
 
   if (activeSession) {
@@ -331,6 +421,7 @@ async function refreshInterview(userId, { interviewType, branch }) {
     );
   }
 
+  const selectedDifficulty = difficulty || DEFAULT_DIFFICULTY;
   const firstQuestion = questionProvider.getRandomQuestion(branch, interviewType);
 
   const session = await prisma.interviewSession.create({
@@ -339,7 +430,7 @@ async function refreshInterview(userId, { interviewType, branch }) {
       branch: branch || null,
       interviewType,
       status: SESSION_STATUS.ACTIVE,
-      difficulty: firstQuestion.difficulty,
+      difficulty: firstQuestion.difficulty || selectedDifficulty,
       conversation: [
         { role: 'assistant', content: firstQuestion.content },
       ],
@@ -361,6 +452,7 @@ async function refreshInterview(userId, { interviewType, branch }) {
     accumulatedScore: 0,
     totalQuestions: 1,
     lifeConsumed: false,
+    resumeSummary: null,
     expiresAt: session.expiresAt,
   };
 }
@@ -416,6 +508,7 @@ async function getActiveSessionsForUser(userId) {
 
 module.exports = {
   startInterview,
+  startResumeInterview,
   submitAnswer,
   endInterview,
   refreshInterview,

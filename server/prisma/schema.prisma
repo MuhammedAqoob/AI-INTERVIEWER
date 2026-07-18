@@ -46,6 +46,7 @@ model InterviewSession {
   accumulatedScore Int       @default(0) @map("accumulated_score")
   totalQuestions   Int       @default(0) @map("total_questions")
   lifeConsumed     Boolean   @default(false) @map("life_consumed")
+  resumeSummary    String?   @map("resume_summary") @db.Text
   expiresAt        DateTime  @map("expires_at") @db.Timestamptz()
   startedAt        DateTime  @default(now()) @map("started_at") @db.Timestamptz()
   updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz()

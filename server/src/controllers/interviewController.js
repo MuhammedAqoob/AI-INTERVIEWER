@@ -1,4 +1,5 @@
 const interviewService = require('../services/interviewService');
+const resumeService = require('../services/resumeService');
 const { BRANCH_LABELS } = require('../constants/branches');
 const { INTERVIEW_TYPE_LABELS, BRANCH_REQUIRED_TYPES } = require('../constants/interviewTypes');
 
@@ -54,7 +55,33 @@ async function start(req, res, next) {
     const result = await interviewService.startInterview(req.user.id, {
       interviewType: req.body.interviewType,
       branch: req.body.branch,
+      difficulty: req.body.difficulty,
     });
+    res.status(200).json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function startResume(req, res, next) {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'Resume file is required. Upload a PDF or image.',
+      });
+    }
+
+    const { summary } = await resumeService.processResume(
+      req.file.buffer,
+      req.file.mimetype
+    );
+
+    const result = await interviewService.startResumeInterview(req.user.id, {
+      difficulty: req.body.difficulty,
+      resumeSummary: summary,
+    });
+
     res.status(200).json({ success: true, data: result });
   } catch (error) {
     next(error);
@@ -87,6 +114,7 @@ async function refresh(req, res, next) {
     const result = await interviewService.refreshInterview(req.user.id, {
       interviewType: req.body.interviewType,
       branch: req.body.branch,
+      difficulty: req.body.difficulty,
     });
     res.status(200).json({ success: true, data: result });
   } catch (error) {
@@ -94,4 +122,4 @@ async function refresh(req, res, next) {
   }
 }
 
-module.exports = { getOptions, getSession, getActiveSessions, start, answer, end, refresh };
+module.exports = { getOptions, getSession, getActiveSessions, start, startResume, answer, end, refresh };
