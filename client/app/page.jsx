@@ -7,7 +7,17 @@ export default function Home() {
   const router = useRouter();
 
   useEffect(() => {
-    router.push('/login');
+    fetch('/api/auth/me', { credentials: 'include' })
+      .then((res) => {
+        if (res.ok) {
+          router.push('/dashboard');
+        } else {
+          router.push('/login');
+        }
+      })
+      .catch(() => {
+        router.push('/login');
+      });
   }, [router]);
 
   return (
