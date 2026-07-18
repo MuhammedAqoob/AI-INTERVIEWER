@@ -1,5 +1,4 @@
 const { DIFFICULTY } = require('../../constants/difficulty');
-const promptBuilder = require('../promptBuilder');
 
 const EASY_FOLLOW_UPS = [
   'Can you elaborate on that further?',
@@ -72,14 +71,15 @@ function generateInterviewTurn({ branch, interviewType, conversationHistory, dif
 
   if (shouldEnd) {
     return {
-      evaluation: { score, feedback, betterAnswer: null },
+      evaluation: { score, feedback, betterAnswer: null, explanation: 'End of interview.' },
+      analytics: generateMockAnalytics(score),
       nextQuestion: null,
+      shouldHire: score >= 6,
+      hireReason: score >= 6 ? 'Good performance overall.' : 'Needs improvement in key areas.',
+      improvements: ['Provide more detailed answers.', 'Use specific examples.'],
       shouldEnd: true,
     };
   }
-
-  const nextQuestionPool = DIFFICULTY_QUESTIONS[difficulty] || DIFFICULTY_QUESTIONS[DIFFICULTY.EASY];
-  const nextQuestionContent = pickRandom(nextQuestionPool);
 
   let nextDifficulty = difficulty;
   if (score >= 8 && difficulty === DIFFICULTY.EASY) {
@@ -92,14 +92,41 @@ function generateInterviewTurn({ branch, interviewType, conversationHistory, dif
     nextDifficulty = DIFFICULTY.EASY;
   }
 
+  const nextQuestionPool = DIFFICULTY_QUESTIONS[nextDifficulty] || DIFFICULTY_QUESTIONS[DIFFICULTY.EASY];
+  const nextQuestionContent = pickRandom(nextQuestionPool);
+
   return {
     evaluation: {
       score,
       feedback,
-      betterAnswer: 'This is a placeholder. The actual AI will generate a model answer here.',
+      betterAnswer: score < 7 ? 'A complete answer would include more technical detail and examples.' : null,
+      explanation: `Score based on answer length and apparent depth.`,
     },
+    analytics: generateMockAnalytics(score),
     nextQuestion: { content: nextQuestionContent, difficulty: nextDifficulty },
+    shouldHire: false,
+    hireReason: '',
+    improvements: [
+      'Provide more detailed answers.',
+      'Use specific examples.',
+      'Explain trade-offs.',
+    ],
     shouldEnd: false,
+  };
+}
+
+function generateMockAnalytics(score) {
+  const base = Math.max(20, Math.min(90, score * 10));
+  return {
+    technicalKnowledge: base + Math.floor(Math.random() * 10) - 5,
+    communication: base + Math.floor(Math.random() * 10) - 5,
+    problemSolving: base + Math.floor(Math.random() * 10) - 5,
+    confidence: base + Math.floor(Math.random() * 10) - 5,
+    grammar: base + Math.floor(Math.random() * 10) - 5,
+    leadership: 50 + Math.floor(Math.random() * 10) - 5,
+    teamwork: 50 + Math.floor(Math.random() * 10) - 5,
+    relevance: base + Math.floor(Math.random() * 10) - 5,
+    professionalism: base + Math.floor(Math.random() * 10) - 5,
   };
 }
 
@@ -116,11 +143,11 @@ function generateFirstQuestion({ branch, interviewType, difficulty, resumeSummar
 async function generateStructuredResponse({ systemPrompt, userPrompt }) {
   return {
     score: 7,
-    feedback: 'Mock provider response. Replace with real AI provider.',
+    feedback: 'Mock provider response.',
     betterAnswer: null,
     question: 'Can you tell me about your experience?',
     difficulty: DIFFICULTY.EASY,
-    summary: 'Mock resume summary. Replace with real AI provider for actual resume parsing.',
+    summary: 'Mock resume summary.',
   };
 }
 

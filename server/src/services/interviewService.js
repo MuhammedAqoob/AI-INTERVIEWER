@@ -14,21 +14,60 @@ const DEFAULT_DIFFICULTY = DIFFICULTY.EASY;
 
 const processingSessions = new Map();
 
+const ANALYTICS_KEYS = [
+  'technicalKnowledge', 'communication', 'problemSolving',
+  'confidence', 'grammar', 'leadership', 'teamwork',
+  'relevance', 'professionalism',
+];
+
+function isExpired(expiresAt) {
+  return new Date(expiresAt) < new Date();
+}
+
 function getExpiryDate() {
   const now = new Date();
   return new Date(now.getTime() + SESSION_EXPIRY_HOURS * 60 * 60 * 1000);
 }
 
-function isExpired(expiresAt) {
-  return new Date() > new Date(expiresAt);
+function computeRollingAnalytics(conversation) {
+  const snapshots = conversation.filter(
+    (m) => m.role === 'metadata' && m.type === 'analytics'
+  );
+  if (snapshots.length === 0) {
+    return null;
+  }
+  const result = {};
+  for (const key of ANALYTICS_KEYS) {
+    const values = snapshots
+      .map((s) => s.analytics?.[key])
+      .filter((v) => typeof v === 'number');
+    if (values.length > 0) {
+      result[key] = Math.round(values.reduce((a, b) => a + b, 0) / values.length);
+    } else {
+      result[key] = 50;
+    }
+  }
+  return result;
+}
+
+function getAnalyticsSnapshot(analytics) {
+  if (!analytics) return {};
+  const snapshot = {};
+  for (const key of ANALYTICS_KEYS) {
+    snapshot[key] = typeof analytics[key] === 'number' ? analytics[key] : 50;
+  }
+  return snapshot;
 }
 
 function serializeSession(session) {
+  const conversation = Array.isArray(session.conversation) ? session.conversation : [];
+  const analytics = computeRollingAnalytics(conversation);
+
   return {
     sessionId: session.id,
     interviewType: session.interviewType,
     branch: session.branch,
-    conversation: Array.isArray(session.conversation) ? session.conversation : [],
+    conversation,
     currentQuestion: session.currentQuestion || null,
     difficulty: session.difficulty,
     accumulatedScore: session.accumulatedScore,
@@ -36,6 +75,7 @@ function serializeSession(session) {
     lifeConsumed: session.lifeConsumed,
     resumeSummary: session.resumeSummary || null,
     status: session.status,
+    analytics,
     startedAt: session.startedAt,
     expiresAt: session.expiresAt,
   };
@@ -272,10 +312,14 @@ async function submitAnswer(userId, { sessionId, answer }) {
     const conversation = Array.isArray(session.conversation) ? [...session.conversation] : [];
     conversation.push({ role: 'user', content: answer });
 
+    const conversationForAI = conversation.filter(
+      (m) => m.role === 'user' || m.role === 'assistant'
+    );
+
     const aiResult = await aiProvider.generateInterviewTurn({
       branch: session.branch,
       interviewType: session.interviewType,
-      conversationHistory: conversation,
+      conversationHistory: conversationForAI,
       difficulty: session.difficulty,
       resumeSummary: session.resumeSummary || undefined,
     });
@@ -287,6 +331,13 @@ async function submitAnswer(userId, { sessionId, answer }) {
 
     if (sessionEnded) {
       conversation.push({ role: 'assistant', content: 'Interview complete. Thank you for participating.' });
+      conversation.push({
+        role: 'metadata',
+        type: 'analytics',
+        analytics: getAnalyticsSnapshot(aiResult.analytics),
+      });
+
+      const rollingAnalytics = computeRollingAnalytics(conversation);
 
       await prisma.interviewSession.update({
         where: { id: sessionId },
@@ -305,15 +356,27 @@ async function submitAnswer(userId, { sessionId, answer }) {
 
       return {
         evaluation: aiResult.evaluation,
+        analytics: rollingAnalytics,
         nextQuestion: null,
         totalQuestions: newTotalQuestions,
         currentScore: newAccumulatedScore,
         sessionStatus: SESSION_STATUS.COMPLETED,
         lifeConsumed: true,
+        shouldHire: aiResult.shouldHire,
+        hireReason: aiResult.hireReason,
+        improvements: aiResult.improvements,
       };
     }
 
     if (!lifeResult.success) {
+      conversation.push({
+        role: 'metadata',
+        type: 'analytics',
+        analytics: getAnalyticsSnapshot(aiResult.analytics),
+      });
+
+      const rollingAnalytics = computeRollingAnalytics(conversation);
+
       await prisma.interviewSession.update({
         where: { id: sessionId },
         data: {
@@ -326,6 +389,7 @@ async function submitAnswer(userId, { sessionId, answer }) {
 
       return {
         evaluation: aiResult.evaluation,
+        analytics: rollingAnalytics,
         nextQuestion: null,
         totalQuestions: newTotalQuestions,
         currentScore: newAccumulatedScore,
@@ -339,6 +403,14 @@ async function submitAnswer(userId, { sessionId, answer }) {
     if (aiResult.nextQuestion) {
       conversation.push({ role: 'assistant', content: aiResult.nextQuestion.content });
     }
+
+    conversation.push({
+      role: 'metadata',
+      type: 'analytics',
+      analytics: getAnalyticsSnapshot(aiResult.analytics),
+    });
+
+    const rollingAnalytics = computeRollingAnalytics(conversation);
 
     await prisma.interviewSession.update({
       where: { id: sessionId },
@@ -355,6 +427,7 @@ async function submitAnswer(userId, { sessionId, answer }) {
 
     return {
       evaluation: aiResult.evaluation,
+      analytics: rollingAnalytics,
       nextQuestion: aiResult.nextQuestion,
       totalQuestions: newTotalQuestions,
       currentScore: newAccumulatedScore,
@@ -379,6 +452,9 @@ async function endInterview(userId, sessionId) {
     throw new AppError('Unauthorized access to interview session.', 403);
   }
 
+  const conversation = Array.isArray(session.conversation) ? session.conversation : [];
+  const analytics = computeRollingAnalytics(conversation);
+
   await prisma.interviewSession.update({
     where: { id: sessionId },
     data: {
@@ -399,6 +475,7 @@ async function endInterview(userId, sessionId) {
     averageScore: session.totalQuestions > 0
       ? parseFloat((session.accumulatedScore / session.totalQuestions).toFixed(1))
       : 0,
+    analytics,
     status: SESSION_STATUS.COMPLETED,
   };
 }
