@@ -1,594 +1,67 @@
 const prisma = require('../config/database');
 const questionProvider = require('./questionProvider');
-const aiProvider = require('./ai');
-const statsService = require('./statsService');
-const { SESSION_STATUS } = require('../constants/sessionStatus');
-const { INTERVIEW_TYPES, RESUME_SUPPORTED_TYPES } = require('../constants/interviewTypes');
-const { DIFFICULTY } = require('../constants/difficulty');
+const ai = require('./ai');
+const performanceService = require('./performanceService');
+const { INTERVIEW_TYPES } = require('../constants/interviewTypes');
+const { getStrategy } = require('./interviewStrategy');
 const AppError = require('../utils/AppError');
 
-const SESSION_EXPIRY_HOURS = 24;
-const MAX_QUESTIONS = parseInt(process.env.MAX_INTERVIEW_QUESTIONS, 10) || 10;
-const MAX_ACTIVE_SESSIONS = 5;
-const DEFAULT_DIFFICULTY = DIFFICULTY.EASY;
+const processing = new Set();
+const DAY_LIMIT = 5;
 
-const processingSessions = new Map();
-
-const ANALYTICS_KEYS = [
-  'technicalKnowledge', 'communication', 'problemSolving',
-  'confidence', 'grammar', 'leadership', 'teamwork',
-  'relevance', 'professionalism',
-];
-
-function isExpired(expiresAt) {
-  return new Date(expiresAt) < new Date();
+function today() { const d = new Date(); return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())); }
+function serialize(session, includeAnswers = false) {
+  const base = { id: session.id, sessionId: session.id, interviewType: session.interviewType, branch: session.branch, status: session.status, questionLimit: session.questionLimit, currentQuestionNumber: session.currentQuestionNumber, currentQuestion: session.currentQuestion, difficulty: session.currentDifficulty, rollingSummary: session.rollingSummary, resumeSummary: session.resumeSummary, startedAt: session.startedAt, endedAt: session.endedAt, overallSummary: session.overallSummary, strengths: session.strengths || [], weaknesses: session.weaknesses || [], hireRecommendation: session.hireRecommendation, hireReason: session.hireReason, learningRoadmap: session.learningRoadmap || [], totalQuestions: session.answers?.length || 0 };
+  if (includeAnswers) base.answers = (session.answers || []).map((a) => ({ ...a, analytics: a.analytics || {} }));
+  return base;
 }
-
-function getExpiryDate() {
-  const now = new Date();
-  return new Date(now.getTime() + SESSION_EXPIRY_HOURS * 60 * 60 * 1000);
+async function claimDailyStart(userId) {
+  const date = today();
+  const usage = await prisma.dailyInterviewUsage.upsert({ where: { userId_date: { userId, date } }, create: { userId, date, interviewsStarted: 1 }, update: { interviewsStarted: { increment: 1 } } });
+  if (usage.interviewsStarted > DAY_LIMIT) { await prisma.dailyInterviewUsage.update({ where: { id: usage.id }, data: { interviewsStarted: { decrement: 1 } } }); throw new AppError('Daily interview limit reached (5). Please return tomorrow.', 429); }
 }
-
-function computeRollingAnalytics(conversation) {
-  const snapshots = conversation.filter(
-    (m) => m.role === 'metadata' && m.type === 'analytics'
-  );
-  if (snapshots.length === 0) {
-    return null;
-  }
-  const result = {};
-  for (const key of ANALYTICS_KEYS) {
-    const values = snapshots
-      .map((s) => s.analytics?.[key])
-      .filter((v) => typeof v === 'number');
-    if (values.length > 0) {
-      result[key] = Math.round(values.reduce((a, b) => a + b, 0) / values.length);
-    } else {
-      result[key] = 50;
-    }
-  }
-  return result;
+async function createSession(userId, input, firstQuestion, resumeSummary) {
+  await claimDailyStart(userId);
+  return prisma.interviewSession.create({ data: { userId, interviewType: input.interviewType, branch: input.branch || null, questionLimit: input.questionLimit, currentQuestion: firstQuestion, currentDifficulty: firstQuestion.difficulty, resumeSummary: resumeSummary || null } });
 }
-
-function getAnalyticsSnapshot(analytics) {
-  if (!analytics) return {};
-  const snapshot = {};
-  for (const key of ANALYTICS_KEYS) {
-    snapshot[key] = typeof analytics[key] === 'number' ? analytics[key] : 50;
-  }
-  return snapshot;
+async function startInterview(userId, input) {
+  if (input.interviewType === INTERVIEW_TYPES.RESUME) throw new AppError('Resume interviews require a file upload.', 400);
+  const firstQuestion = await questionProvider.getRandomQuestion(input.branch, input.interviewType);
+  return serialize(await createSession(userId, input, firstQuestion));
 }
-
-function serializeSession(session) {
-  const conversation = Array.isArray(session.conversation) ? session.conversation : [];
-  const analytics = computeRollingAnalytics(conversation);
-
-  return {
-    sessionId: session.id,
-    interviewType: session.interviewType,
-    branch: session.branch,
-    conversation,
-    currentQuestion: session.currentQuestion || null,
-    difficulty: session.difficulty,
-    accumulatedScore: session.accumulatedScore,
-    totalQuestions: session.totalQuestions,
-    lifeConsumed: session.lifeConsumed,
-    resumeSummary: session.resumeSummary || null,
-    status: session.status,
-    analytics,
-    startedAt: session.startedAt,
-    expiresAt: session.expiresAt,
-  };
+async function startResumeInterview(userId, input) {
+  const firstQuestion = await ai.generateFirstQuestion({ interviewType: INTERVIEW_TYPES.RESUME, difficulty: 'EASY', resumeSummary: input.resumeSummary });
+  return serialize(await createSession(userId, { ...input, interviewType: INTERVIEW_TYPES.RESUME }, firstQuestion, input.resumeSummary));
 }
-
-async function countActiveSessions(userId) {
-  const now = new Date();
-  const count = await prisma.interviewSession.count({
-    where: {
-      userId,
-      status: SESSION_STATUS.ACTIVE,
-      expiresAt: { gt: now },
-    },
-  });
-  return count;
-}
-
-async function findActiveSession(userId, interviewType, branch) {
-  const where = {
-    userId,
-    interviewType,
-    status: SESSION_STATUS.ACTIVE,
-  };
-
-  if (branch) {
-    where.branch = branch;
-  } else {
-    where.branch = null;
-  }
-
-  const session = await prisma.interviewSession.findFirst({
-    where,
-    orderBy: { startedAt: 'desc' },
-  });
-
-  if (!session) return null;
-
-  if (isExpired(session.expiresAt)) {
-    await prisma.interviewSession.update({
-      where: { id: session.id },
-      data: { status: SESSION_STATUS.EXPIRED },
-    });
-    return null;
-  }
-
+async function owned(userId, sessionId, includeAnswers = false) {
+  const session = await prisma.interviewSession.findUnique({ where: { id: sessionId }, include: includeAnswers ? { answers: { orderBy: { questionNumber: 'asc' } } } : undefined });
+  if (!session) throw new AppError('Interview session not found.', 404);
+  if (session.userId !== userId) throw new AppError('Unauthorized access to interview session.', 403);
   return session;
 }
-
-async function startInterview(userId, { interviewType, branch, difficulty }) {
-  const existingSession = await findActiveSession(userId, interviewType, branch);
-
-  if (existingSession) {
-    const conversation = Array.isArray(existingSession.conversation)
-      ? existingSession.conversation
-      : [];
-
-    return {
-      sessionId: existingSession.id,
-      interviewType: existingSession.interviewType,
-      branch: existingSession.branch,
-      conversation,
-      currentQuestion: existingSession.currentQuestion,
-      difficulty: existingSession.difficulty,
-      accumulatedScore: existingSession.accumulatedScore,
-      totalQuestions: existingSession.totalQuestions,
-      lifeConsumed: existingSession.lifeConsumed,
-      resumeSummary: existingSession.resumeSummary || null,
-      isResumed: true,
-      expiresAt: existingSession.expiresAt,
-    };
-  }
-
-  const activeCount = await countActiveSessions(userId);
-  if (activeCount >= MAX_ACTIVE_SESSIONS) {
-    throw new AppError(
-      'Maximum active interview sessions reached. Delete or finish an existing session.',
-      409
-    );
-  }
-
-  const selectedDifficulty = difficulty || DEFAULT_DIFFICULTY;
-  const firstQuestion = questionProvider.getRandomQuestion(branch, interviewType);
-
-  const session = await prisma.interviewSession.create({
-    data: {
-      userId,
-      branch: branch || null,
-      interviewType,
-      status: SESSION_STATUS.ACTIVE,
-      difficulty: firstQuestion.difficulty || selectedDifficulty,
-      conversation: [
-        { role: 'assistant', content: firstQuestion.content },
-      ],
-      currentQuestion: firstQuestion,
-      accumulatedScore: 0,
-      totalQuestions: 1,
-      lifeConsumed: false,
-      expiresAt: getExpiryDate(),
-    },
-  });
-
-  return {
-    sessionId: session.id,
-    interviewType,
-    branch: branch || null,
-    conversation: session.conversation,
-    currentQuestion: session.currentQuestion,
-    difficulty: session.difficulty,
-    accumulatedScore: 0,
-    totalQuestions: 1,
-    lifeConsumed: false,
-    resumeSummary: null,
-    isResumed: false,
-    expiresAt: session.expiresAt,
-  };
-}
-
-async function startResumeInterview(userId, { difficulty, resumeSummary }) {
-  const existingActive = await prisma.interviewSession.findFirst({
-    where: {
-      userId,
-      interviewType: INTERVIEW_TYPES.RESUME,
-      status: SESSION_STATUS.ACTIVE,
-    },
-    orderBy: { startedAt: 'desc' },
-  });
-
-  if (existingActive && !isExpired(existingActive.expiresAt)) {
-    const conversation = Array.isArray(existingActive.conversation)
-      ? existingActive.conversation
-      : [];
-
-    return {
-      sessionId: existingActive.id,
-      interviewType: existingActive.interviewType,
-      branch: null,
-      conversation,
-      currentQuestion: existingActive.currentQuestion,
-      difficulty: existingActive.difficulty,
-      accumulatedScore: existingActive.accumulatedScore,
-      totalQuestions: existingActive.totalQuestions,
-      lifeConsumed: existingActive.lifeConsumed,
-      resumeSummary: existingActive.resumeSummary || null,
-      isResumed: true,
-      expiresAt: existingActive.expiresAt,
-    };
-  }
-
-  const activeCount = await countActiveSessions(userId);
-  if (activeCount >= MAX_ACTIVE_SESSIONS) {
-    throw new AppError(
-      'Maximum active interview sessions reached. Delete or finish an existing session.',
-      409
-    );
-  }
-
-  const selectedDifficulty = difficulty || DEFAULT_DIFFICULTY;
-
-  const firstQuestion = await aiProvider.generateFirstQuestion({
-    interviewType: INTERVIEW_TYPES.RESUME,
-    difficulty: selectedDifficulty,
-    resumeSummary,
-  });
-
-  const session = await prisma.interviewSession.create({
-    data: {
-      userId,
-      branch: null,
-      interviewType: INTERVIEW_TYPES.RESUME,
-      status: SESSION_STATUS.ACTIVE,
-      difficulty: firstQuestion.difficulty || selectedDifficulty,
-      conversation: [
-        { role: 'assistant', content: firstQuestion.content },
-      ],
-      currentQuestion: firstQuestion,
-      accumulatedScore: 0,
-      totalQuestions: 1,
-      lifeConsumed: false,
-      resumeSummary,
-      expiresAt: getExpiryDate(),
-    },
-  });
-
-  return {
-    sessionId: session.id,
-    interviewType: INTERVIEW_TYPES.RESUME,
-    branch: null,
-    conversation: session.conversation,
-    currentQuestion: session.currentQuestion,
-    difficulty: session.difficulty,
-    accumulatedScore: 0,
-    totalQuestions: 1,
-    lifeConsumed: false,
-    resumeSummary,
-    isResumed: false,
-    expiresAt: session.expiresAt,
-  };
-}
-
+function average(answers, type) { const keys = getStrategy(type).analytics; const totals = Object.fromEntries(keys.map((k) => [k, 0])); for (const answer of answers) for (const key of keys) totals[key] += Number(answer.analytics?.[key] || 0); return Object.fromEntries(keys.map((k) => [k, answers.length ? Math.round(totals[k] / answers.length) : 0])); }
+async function finish(session, answers) { const analytics = average(answers, session.interviewType); const final = await ai.generateFinalEvaluation({ interviewType: session.interviewType, rollingSummary: session.rollingSummary, analytics, questionCount: answers.length }); return prisma.interviewSession.update({ where: { id: session.id }, data: { status: 'COMPLETED', endedAt: new Date(), currentQuestion: null, overallSummary: final.overallSummary, strengths: final.strengths, weaknesses: final.weaknesses, hireRecommendation: final.hireRecommendation, hireReason: final.hireReason, learningRoadmap: final.learningRoadmap } }); }
 async function submitAnswer(userId, { sessionId, answer }) {
-  if (processingSessions.get(sessionId)) {
-    throw new AppError('Answer is already being processed. Please wait.', 409);
-  }
-
-  processingSessions.set(sessionId, true);
-
+  if (processing.has(sessionId)) throw new AppError('Answer is already being processed.', 409); processing.add(sessionId);
   try {
-    const session = await prisma.interviewSession.findUnique({
-      where: { id: sessionId },
-    });
-
-    if (!session) {
-      throw new AppError('Interview session not found.', 404);
-    }
-
-    if (session.userId !== userId) {
-      throw new AppError('Unauthorized access to interview session.', 403);
-    }
-
-    if (session.status !== SESSION_STATUS.ACTIVE) {
-      throw new AppError('Interview session is no longer active.', 410);
-    }
-
-    if (isExpired(session.expiresAt)) {
-      await prisma.interviewSession.update({
-        where: { id: sessionId },
-        data: { status: SESSION_STATUS.EXPIRED },
-      });
-      throw new AppError('Interview session has expired. Please start a new one.', 410);
-    }
-
-    const lifeResult = await statsService.consumeLife(userId);
-
-    const conversation = Array.isArray(session.conversation) ? [...session.conversation] : [];
-    conversation.push({ role: 'user', content: answer });
-
-    const conversationForAI = conversation.filter(
-      (m) => m.role === 'user' || m.role === 'assistant'
-    );
-
-    const aiResult = await aiProvider.generateInterviewTurn({
-      branch: session.branch,
-      interviewType: session.interviewType,
-      conversationHistory: conversationForAI,
-      difficulty: session.difficulty,
-      resumeSummary: session.resumeSummary || undefined,
-    });
-
-    const newAccumulatedScore = session.accumulatedScore + aiResult.evaluation.score;
-    const newTotalQuestions = session.totalQuestions + 1;
-
-    const sessionEnded = aiResult.shouldEnd || newTotalQuestions > MAX_QUESTIONS;
-
-    if (sessionEnded) {
-      conversation.push({ role: 'assistant', content: 'Interview complete. Thank you for participating.' });
-      conversation.push({
-        role: 'metadata',
-        type: 'analytics',
-        analytics: getAnalyticsSnapshot(aiResult.analytics),
-      });
-
-      const rollingAnalytics = computeRollingAnalytics(conversation);
-
-      await prisma.interviewSession.update({
-        where: { id: sessionId },
-        data: {
-          status: SESSION_STATUS.COMPLETED,
-          conversation,
-          accumulatedScore: newAccumulatedScore,
-          totalQuestions: newTotalQuestions,
-          lifeConsumed: true,
-          endedAt: new Date(),
-        },
-      });
-
-      await statsService.calculateStreak(userId);
-      await statsService.incrementTotalInterviews(userId);
-
-      return {
-        evaluation: aiResult.evaluation,
-        analytics: rollingAnalytics,
-        nextQuestion: null,
-        totalQuestions: newTotalQuestions,
-        currentScore: newAccumulatedScore,
-        sessionStatus: SESSION_STATUS.COMPLETED,
-        lifeConsumed: true,
-        shouldHire: aiResult.shouldHire,
-        hireReason: aiResult.hireReason,
-        improvements: aiResult.improvements,
-      };
-    }
-
-    if (!lifeResult.success) {
-      conversation.push({
-        role: 'metadata',
-        type: 'analytics',
-        analytics: getAnalyticsSnapshot(aiResult.analytics),
-      });
-
-      const rollingAnalytics = computeRollingAnalytics(conversation);
-
-      await prisma.interviewSession.update({
-        where: { id: sessionId },
-        data: {
-          conversation,
-          accumulatedScore: newAccumulatedScore,
-          totalQuestions: newTotalQuestions,
-          lifeConsumed: true,
-        },
-      });
-
-      return {
-        evaluation: aiResult.evaluation,
-        analytics: rollingAnalytics,
-        nextQuestion: null,
-        totalQuestions: newTotalQuestions,
-        currentScore: newAccumulatedScore,
-        sessionStatus: SESSION_STATUS.ACTIVE,
-        lifeConsumed: true,
-        interviewEnded: true,
-        reason: 'NO_LIVES',
-      };
-    }
-
-    if (aiResult.nextQuestion) {
-      conversation.push({ role: 'assistant', content: aiResult.nextQuestion.content });
-    }
-
-    conversation.push({
-      role: 'metadata',
-      type: 'analytics',
-      analytics: getAnalyticsSnapshot(aiResult.analytics),
-    });
-
-    const rollingAnalytics = computeRollingAnalytics(conversation);
-
-    await prisma.interviewSession.update({
-      where: { id: sessionId },
-      data: {
-        conversation,
-        currentQuestion: aiResult.nextQuestion,
-        difficulty: aiResult.nextQuestion ? aiResult.nextQuestion.difficulty : session.difficulty,
-        accumulatedScore: newAccumulatedScore,
-        totalQuestions: newTotalQuestions,
-        lifeConsumed: true,
-        expiresAt: getExpiryDate(),
-      },
-    });
-
-    return {
-      evaluation: aiResult.evaluation,
-      analytics: rollingAnalytics,
-      nextQuestion: aiResult.nextQuestion,
-      totalQuestions: newTotalQuestions,
-      currentScore: newAccumulatedScore,
-      sessionStatus: SESSION_STATUS.ACTIVE,
-      lifeConsumed: true,
-    };
-  } finally {
-    processingSessions.delete(sessionId);
-  }
+    const session = await owned(userId, sessionId, true);
+    if (session.status !== 'ACTIVE' || !session.currentQuestion) throw new AppError('This interview is not active.', 409);
+    const turn = await ai.generateInterviewTurn({ interviewType: session.interviewType, branch: session.branch, questionNumber: session.currentQuestionNumber, questionLimit: session.questionLimit, difficulty: session.currentDifficulty, rollingSummary: session.rollingSummary, currentQuestion: session.currentQuestion.content, candidateAnswer: answer });
+    // Create the immutable user-level score snapshot before the new answer is
+    // saved, then add this answer once. Deleting a session never subtracts it.
+    await performanceService.ensureAggregate(userId);
+    const savedAnswer = await prisma.interviewAnswer.create({ data: { sessionId, questionNumber: session.currentQuestionNumber, question: session.currentQuestion.content, userAnswer: answer, betterAnswer: turn.betterAnswer, difficulty: session.currentDifficulty, analytics: turn.analytics } });
+    await performanceService.recordAnswer(userId, session.interviewType, turn.analytics);
+    const isFinal = session.currentQuestionNumber >= session.questionLimit;
+    let updated = await prisma.interviewSession.update({ where: { id: sessionId }, data: { rollingSummary: turn.updatedSummary, currentQuestionNumber: { increment: 1 }, currentQuestion: isFinal ? null : turn.nextQuestion, currentDifficulty: isFinal ? session.currentDifficulty : turn.nextQuestion.difficulty } });
+    if (isFinal) updated = await finish({ ...updated, rollingSummary: turn.updatedSummary }, [...session.answers, savedAnswer]);
+    return { answer: savedAnswer, betterAnswer: turn.betterAnswer, analytics: turn.analytics, nextQuestion: updated.currentQuestion, interviewEnded: isFinal, status: updated.status, questionNumber: session.currentQuestionNumber, questionLimit: session.questionLimit, finalEvaluation: isFinal ? serialize(updated) : null };
+  } finally { processing.delete(sessionId); }
 }
-
-async function endInterview(userId, sessionId) {
-  const session = await prisma.interviewSession.findUnique({
-    where: { id: sessionId },
-  });
-
-  if (!session) {
-    throw new AppError('Interview session not found.', 404);
-  }
-
-  if (session.userId !== userId) {
-    throw new AppError('Unauthorized access to interview session.', 403);
-  }
-
-  const conversation = Array.isArray(session.conversation) ? session.conversation : [];
-  const analytics = computeRollingAnalytics(conversation);
-
-  await prisma.interviewSession.update({
-    where: { id: sessionId },
-    data: {
-      status: SESSION_STATUS.COMPLETED,
-      endedAt: new Date(),
-    },
-  });
-
-  if (session.lifeConsumed) {
-    await statsService.calculateStreak(userId);
-    await statsService.incrementTotalInterviews(userId);
-  }
-
-  return {
-    sessionId,
-    totalQuestions: session.totalQuestions,
-    finalScore: session.accumulatedScore,
-    averageScore: session.totalQuestions > 0
-      ? parseFloat((session.accumulatedScore / session.totalQuestions).toFixed(1))
-      : 0,
-    analytics,
-    status: SESSION_STATUS.COMPLETED,
-  };
-}
-
-async function refreshInterview(userId, { interviewType, branch, difficulty }) {
-  const activeSession = await findActiveSession(userId, interviewType, branch);
-
-  if (activeSession) {
-    await prisma.interviewSession.update({
-      where: { id: activeSession.id },
-      data: { status: SESSION_STATUS.EXPIRED },
-    });
-  }
-
-  const activeCount = await countActiveSessions(userId);
-  if (activeCount >= MAX_ACTIVE_SESSIONS) {
-    throw new AppError(
-      'Maximum active interview sessions reached. Delete or finish an existing session.',
-      409
-    );
-  }
-
-  const selectedDifficulty = difficulty || DEFAULT_DIFFICULTY;
-  const firstQuestion = questionProvider.getRandomQuestion(branch, interviewType);
-
-  const session = await prisma.interviewSession.create({
-    data: {
-      userId,
-      branch: branch || null,
-      interviewType,
-      status: SESSION_STATUS.ACTIVE,
-      difficulty: firstQuestion.difficulty || selectedDifficulty,
-      conversation: [
-        { role: 'assistant', content: firstQuestion.content },
-      ],
-      currentQuestion: firstQuestion,
-      accumulatedScore: 0,
-      totalQuestions: 1,
-      lifeConsumed: false,
-      expiresAt: getExpiryDate(),
-    },
-  });
-
-  return {
-    sessionId: session.id,
-    interviewType,
-    branch: branch || null,
-    conversation: session.conversation,
-    currentQuestion: session.currentQuestion,
-    difficulty: session.difficulty,
-    accumulatedScore: 0,
-    totalQuestions: 1,
-    lifeConsumed: false,
-    resumeSummary: null,
-    expiresAt: session.expiresAt,
-  };
-}
-
-async function getSessionById(userId, sessionId) {
-  const session = await prisma.interviewSession.findUnique({
-    where: { id: sessionId },
-  });
-
-  if (!session) {
-    throw new AppError('Interview session not found.', 404);
-  }
-
-  if (session.userId !== userId) {
-    throw new AppError('Unauthorized access to interview session.', 403);
-  }
-
-  if (session.status !== SESSION_STATUS.ACTIVE) {
-    throw new AppError('Interview session is no longer active.', 410);
-  }
-
-  if (isExpired(session.expiresAt)) {
-    await prisma.interviewSession.update({
-      where: { id: sessionId },
-      data: { status: SESSION_STATUS.EXPIRED },
-    });
-    throw new AppError('Interview session has expired.', 410);
-  }
-
-  return serializeSession(session);
-}
-
-async function getActiveSessionsForUser(userId) {
-  const sessions = await prisma.interviewSession.findMany({
-    where: { userId, status: SESSION_STATUS.ACTIVE },
-    orderBy: { startedAt: 'desc' },
-  });
-
-  const active = [];
-  for (const session of sessions) {
-    if (!isExpired(session.expiresAt)) {
-      active.push(serializeSession(session));
-    } else {
-      await prisma.interviewSession.update({
-        where: { id: session.id },
-        data: { status: SESSION_STATUS.EXPIRED },
-      });
-    }
-  }
-
-  return active;
-}
-
-module.exports = {
-  startInterview,
-  startResumeInterview,
-  submitAnswer,
-  endInterview,
-  refreshInterview,
-  getSessionById,
-  getActiveSessionsForUser,
-};
+async function pause(userId, sessionId) { const session = await owned(userId, sessionId); if (session.status === 'ACTIVE') return serialize(await prisma.interviewSession.update({ where: { id: sessionId }, data: { status: 'PAUSED' } })); return serialize(session); }
+async function resume(userId, sessionId) { const session = await owned(userId, sessionId); if (session.status !== 'PAUSED') throw new AppError('Only paused interviews can be continued.', 409); return serialize(await prisma.interviewSession.update({ where: { id: sessionId }, data: { status: 'ACTIVE' } })); }
+async function getSessionById(userId, id) { return serialize(await owned(userId, id, true), true); }
+async function getSessionsForUser(userId) { const rows = await prisma.interviewSession.findMany({ where: { userId }, include: { answers: { select: { id: true } } }, orderBy: { updatedAt: 'desc' } }); return rows.map((s) => serialize(s)); }
+async function getHistory(userId) { return getSessionsForUser(userId); }
+async function deleteSession(userId, id) { await owned(userId, id); await prisma.interviewSession.delete({ where: { id } }); return { sessionId: id, deleted: true }; }
+module.exports = { startInterview, startResumeInterview, submitAnswer, pause, resume, getSessionById, getSessionDetails: getSessionById, getSessionsForUser, getHistory, deleteSession };

@@ -34,16 +34,34 @@ async function getSession(req, res, next) {
       return res.status(200).json({ success: true, data: result });
     }
 
-    const result = await interviewService.getActiveSessionsForUser(req.user.id);
+    const result = await interviewService.getSessionsForUser(req.user.id);
     res.status(200).json({ success: true, data: result });
   } catch (error) {
     next(error);
   }
 }
 
-async function getActiveSessions(req, res, next) {
+async function getSessions(req, res, next) {
   try {
-    const result = await interviewService.getActiveSessionsForUser(req.user.id);
+    const result = await interviewService.getSessionsForUser(req.user.id);
+    res.status(200).json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function getHistory(req, res, next) {
+  try {
+    const result = await interviewService.getHistory(req.user.id);
+    res.status(200).json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function getSessionDetails(req, res, next) {
+  try {
+    const result = await interviewService.getSessionDetails(req.user.id, req.params.sessionId);
     res.status(200).json({ success: true, data: result });
   } catch (error) {
     next(error);
@@ -52,10 +70,17 @@ async function getActiveSessions(req, res, next) {
 
 async function start(req, res, next) {
   try {
+    if (req.body.interviewType === 'RESUME') {
+      return res.status(400).json({
+        success: false,
+        message: 'Resume interviews require a file upload. Use /api/interview/start-resume instead.',
+      });
+    }
+
     const result = await interviewService.startInterview(req.user.id, {
       interviewType: req.body.interviewType,
       branch: req.body.branch,
-      difficulty: req.body.difficulty,
+      questionLimit: req.body.questionLimit,
     });
     res.status(200).json({ success: true, data: result });
   } catch (error) {
@@ -78,7 +103,7 @@ async function startResume(req, res, next) {
     );
 
     const result = await interviewService.startResumeInterview(req.user.id, {
-      difficulty: req.body.difficulty,
+      questionLimit: Number(req.body.questionLimit),
       resumeSummary: summary,
     });
 
@@ -100,26 +125,28 @@ async function answer(req, res, next) {
   }
 }
 
-async function end(req, res, next) {
+async function pause(req, res, next) { try { const result = await interviewService.pause(req.user.id, req.params.sessionId); res.status(200).json({ success: true, data: result }); } catch (error) { next(error); } }
+async function resume(req, res, next) { try { const result = await interviewService.resume(req.user.id, req.params.sessionId); res.status(200).json({ success: true, data: result }); } catch (error) { next(error); } }
+
+async function deleteSession(req, res, next) {
   try {
-    const result = await interviewService.endInterview(req.user.id, req.body.sessionId);
+    const result = await interviewService.deleteSession(req.user.id, req.params.sessionId);
     res.status(200).json({ success: true, data: result });
   } catch (error) {
     next(error);
   }
 }
 
-async function refresh(req, res, next) {
-  try {
-    const result = await interviewService.refreshInterview(req.user.id, {
-      interviewType: req.body.interviewType,
-      branch: req.body.branch,
-      difficulty: req.body.difficulty,
-    });
-    res.status(200).json({ success: true, data: result });
-  } catch (error) {
-    next(error);
-  }
-}
-
-module.exports = { getOptions, getSession, getActiveSessions, start, startResume, answer, end, refresh };
+module.exports = {
+  getOptions,
+  getSession,
+  getSessions,
+  getHistory,
+  getSessionDetails,
+  start,
+  startResume,
+  answer,
+  pause,
+  resume,
+  deleteSession,
+};

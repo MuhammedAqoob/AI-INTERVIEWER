@@ -1,160 +1,24 @@
 const prisma = require('../config/database');
+const performanceService = require('./performanceService');
+const { INTERVIEW_TYPES } = require('../constants/interviewTypes');
+const { CORE_TYPES, STRATEGIES } = require('./interviewStrategy');
 
-const MAX_LIVES = 5;
-const STREAK_GRACE_PERIOD_HOURS = 24;
+function dateToday() { const d = new Date(); return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())); }
 
-function getNextMidnightUTC() {
-  const now = new Date();
-  const tomorrow = new Date(Date.UTC(
-    now.getUTCFullYear(),
-    now.getUTCMonth(),
-    now.getUTCDate() + 1,
-    0, 0, 0, 0
-  ));
-  return tomorrow;
+function groupedAnalytics(score) {
+  return Object.fromEntries(CORE_TYPES.map((type) => [type, Object.fromEntries(STRATEGIES[type].analytics.map((key) => [key, score.criterionScores[key]]))]));
 }
 
-function isToday(date) {
-  if (!date) return false;
-  const now = new Date();
-  return (
-    date.getUTCFullYear() === now.getUTCFullYear() &&
-    date.getUTCMonth() === now.getUTCMonth() &&
-    date.getUTCDate() === now.getUTCDate()
-  );
-}
-
-function isYesterday(date) {
-  if (!date) return false;
-  const yesterday = new Date();
-  yesterday.setUTCDate(yesterday.getUTCDate() - 1);
-  return (
-    date.getUTCFullYear() === yesterday.getUTCFullYear() &&
-    date.getUTCMonth() === yesterday.getUTCMonth() &&
-    date.getUTCDate() === yesterday.getUTCDate()
-  );
-}
-
-function isBeforeYesterday(date) {
-  if (!date) return false;
-  const yesterday = new Date();
-  yesterday.setUTCDate(yesterday.getUTCDate() - 1);
-  yesterday.setUTCHours(0, 0, 0, 0);
-  return date < yesterday;
-}
-
-async function getOrCreateUserStats(userId) {
-  let stats = await prisma.userStats.findUnique({ where: { userId } });
-
-  if (!stats) {
-    stats = await prisma.userStats.create({
-      data: {
-        userId,
-        livesRemaining: MAX_LIVES,
-        livesResetAt: getNextMidnightUTC(),
-        currentStreak: 0,
-        bestStreak: 0,
-        totalInterviews: 0,
-      },
-    });
-  }
-
-  return stats;
-}
-
-async function resetLivesIfNeeded(userId) {
-  const stats = await getOrCreateUserStats(userId);
-
-  if (stats.livesResetAt < new Date()) {
-    const updated = await prisma.userStats.update({
-      where: { userId },
-      data: {
-        livesRemaining: MAX_LIVES,
-        livesResetAt: getNextMidnightUTC(),
-      },
-    });
-    return updated;
-  }
-
-  return stats;
-}
-
-async function consumeLife(userId) {
-  const stats = await resetLivesIfNeeded(userId);
-
-  if (stats.livesRemaining <= 0) {
-    return {
-      success: false,
-      remainingLives: 0,
-      reason: 'NO_LIVES',
-    };
-  }
-
-  const updated = await prisma.userStats.update({
-    where: { userId },
-    data: { livesRemaining: stats.livesRemaining - 1 },
-  });
-
-  return {
-    success: true,
-    remainingLives: updated.livesRemaining,
-  };
-}
-
-async function calculateStreak(userId) {
-  const stats = await getOrCreateUserStats(userId);
-  let { currentStreak, bestStreak } = stats;
-  const { lastInterviewAt } = stats;
-
-  if (!lastInterviewAt) {
-    currentStreak = 1;
-  } else if (isToday(lastInterviewAt)) {
-    // Already counted today, no change
-  } else if (isYesterday(lastInterviewAt)) {
-    currentStreak += 1;
-  } else if (isBeforeYesterday(lastInterviewAt)) {
-    currentStreak = 1;
-  }
-
-  if (currentStreak > bestStreak) {
-    bestStreak = currentStreak;
-  }
-
-  return prisma.userStats.update({
-    where: { userId },
-    data: {
-      currentStreak,
-      bestStreak,
-      lastInterviewAt: new Date(),
-    },
-  });
-}
-
-async function incrementTotalInterviews(userId) {
-  return prisma.userStats.update({
-    where: { userId },
-    data: { totalInterviews: { increment: 1 } },
-  });
+async function analyticsByType(userId) {
+  return groupedAnalytics(performanceService.snapshot(await performanceService.ensureAggregate(userId)));
 }
 
 async function getDashboardSummary(userId) {
-  const stats = await resetLivesIfNeeded(userId);
-
-  return {
-    livesRemaining: stats.livesRemaining,
-    livesResetAt: stats.livesResetAt,
-    currentStreak: stats.currentStreak,
-    bestStreak: stats.bestStreak,
-    totalInterviews: stats.totalInterviews,
-    canStartInterview: true,
-  };
+  const [sessions, usage, aggregate] = await Promise.all([prisma.interviewSession.findMany({ where: { userId }, select: { id: true, interviewType: true, status: true, updatedAt: true } }), prisma.dailyInterviewUsage.findUnique({ where: { userId_date: { userId, date: dateToday() } } }), performanceService.ensureAggregate(userId)]);
+  const counts = { technical: 0, hr: 0, aptitude: 0, resume: 0 }; for (const s of sessions) { if (s.interviewType === INTERVIEW_TYPES.TECHNICAL) counts.technical++; if (s.interviewType === INTERVIEW_TYPES.HR) counts.hr++; if (s.interviewType === INTERVIEW_TYPES.APTITUDE) counts.aptitude++; if (s.interviewType === INTERVIEW_TYPES.RESUME) counts.resume++; }
+  const paused = sessions.filter((s) => s.status === 'PAUSED').sort((a, b) => b.updatedAt - a.updatedAt)[0]; const recent = [...sessions].sort((a, b) => b.updatedAt - a.updatedAt)[0];
+  const score = performanceService.snapshot(aggregate);
+  // Analytics are persistent user performance, not a view of deletable sessions.
+  return { interviewsStartedToday: usage?.interviewsStarted || 0, interviewsRemainingToday: Math.max(0, 5 - (usage?.interviewsStarted || 0)), totalSessions: sessions.length, completedInterviews: sessions.filter((s) => s.status === 'COMPLETED').length, interviewCounts: counts, recentSessionId: recent?.id || null, continueSessionId: paused?.id || null, analytics: groupedAnalytics(score), overallPerformance: score.averageScore, criteriaCovered: score.criteriaCovered };
 }
-
-module.exports = {
-  getOrCreateUserStats,
-  resetLivesIfNeeded,
-  consumeLife,
-  calculateStreak,
-  incrementTotalInterviews,
-  getDashboardSummary,
-};
+module.exports = { getDashboardSummary, analyticsByType };

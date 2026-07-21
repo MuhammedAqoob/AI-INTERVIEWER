@@ -10,6 +10,7 @@ const authRoutes = require('./routes/auth');
 const dashboardRoutes = require('./routes/dashboard');
 const interviewRoutes = require('./routes/interview');
 const errorHandler = require('./middleware/errorHandler');
+const performanceService = require('./services/performanceService');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -56,6 +57,9 @@ app.use(errorHandler);
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+  // Backfill existing answers once into the persistent score store. Future
+  // session deletion only removes session detail, never these totals.
+  performanceService.backfillAll().catch((error) => console.error('Performance score backfill failed:', error.message));
 });
 
 module.exports = app;

@@ -1,215 +1,99 @@
-const mockProvider = require('./mock');
 const geminiProvider = require('./gemini');
 const groqProvider = require('./groq');
+const zaiProvider = require('./zai');
 const promptBuilder = require('../promptBuilder');
+const { normalizeAnalytics } = require('../interviewStrategy');
 const AppError = require('../../utils/AppError');
 
-const PROVIDERS = {
-  mock: mockProvider,
-  gemini: geminiProvider,
-  groq: groqProvider,
-};
-
-const FALLBACK_PROVIDER = 'groq';
-const MAX_RETRIES = 1;
-
-function getPrimaryProviderName() {
-  return process.env.AI_PROVIDER || 'mock';
+const PROVIDERS = { gemini: geminiProvider, groq: groqProvider, zai: zaiProvider };
+const retries = 1;
+const primary = () => process.env.AI_PROVIDER || 'gemini';
+const providerSequence = () => [...new Set([primary(), 'gemini', 'groq', 'zai'])];
+function liveAiUnavailable(error) {
+  const reason = error?.message ? ` Diagnostic: ${error.message}` : '';
+  if (error) console.error('Live AI provider failure:', error.message);
+  const message = process.env.NODE_ENV === 'development'
+    ? `Live AI is unavailable. Check your internet connection and Gemini/Groq API configuration, then try again.${reason}`
+    : 'Live AI is unavailable. Please try again later.';
+  return new AppError(message, 503);
 }
 
-function getProvider(name) {
+function aiResponseInvalid(error) {
+  const reason = error?.message ? ` Diagnostic: ${error.message}` : '';
+  if (error) console.error('Malformed AI response:', error.message);
+  const message = process.env.NODE_ENV === 'development'
+    ? `Live AI returned malformed JSON after retry. Please submit the answer again.${reason}`
+    : 'Live AI returned an invalid response. Please submit the answer again.';
+  return new AppError(message, 502);
+}
+
+function isMalformedResponse(error) {
+  return error instanceof SyntaxError || /JSON|Invalid next question|Missing AI turn fields|Invalid analytics/i.test(error?.message || '');
+}
+
+async function call(name, method, params) {
   const provider = PROVIDERS[name];
-  if (!provider) {
-    throw new AppError(`Unknown AI provider: ${name}. Available: ${Object.keys(PROVIDERS).join(', ')}`, 500);
+  if (!provider) throw new AppError(`Unknown AI provider: ${name}`, 500);
+  let lastError;
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try { return await provider[method](params); } catch (error) { lastError = error; }
   }
-  return provider;
-}
-
-function isRetryableError(error) {
-  if (!error) return false;
-  const msg = error.message || '';
-  return (
-    msg.includes('timeout') ||
-    msg.includes('TIMEOUT') ||
-    msg.includes('429') ||
-    msg.includes('rate') ||
-    msg.includes('Rate') ||
-    msg.includes('500') ||
-    msg.includes('502') ||
-    msg.includes('503') ||
-    msg.includes('ECONNRESET') ||
-    msg.includes('ENOTFOUND') ||
-    msg.includes('network') ||
-    error.code === 'ECONNRESET' ||
-    error.code === 'ENOTFOUND' ||
-    error.status === 429 ||
-    error.status === 500 ||
-    error.status === 502 ||
-    error.status === 503
-  );
-}
-
-function isJsonParseError(error) {
-  return error instanceof SyntaxError && error.message.includes('JSON');
-}
-
-function validateInterviewResponse(data) {
-  if (!data || typeof data !== 'object') {
-    throw new AppError('AI returned empty or invalid response.', 502);
-  }
-
-  if (!data.evaluation || typeof data.evaluation !== 'object') {
-    throw new AppError('AI response missing required field: evaluation.', 502);
-  }
-
-  if (typeof data.evaluation.score !== 'number') {
-    throw new AppError('AI response missing evaluation.score.', 502);
-  }
-
-  if (!data.nextQuestion && data.shouldEnd !== true) {
-    throw new AppError('AI response missing nextQuestion.', 502);
-  }
-
-  return true;
-}
-
-async function callWithRetry(providerName, method, params) {
-  const provider = getProvider(providerName);
-  let lastError = null;
-
-  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-    try {
-      const result = await provider[method](params);
-      return result;
-    } catch (error) {
-      lastError = error;
-
-      if (isJsonParseError(error)) {
-        if (attempt < MAX_RETRIES) {
-          continue;
-        }
-      }
-
-      if (isRetryableError(error) && attempt < MAX_RETRIES) {
-        continue;
-      }
-
-      throw error;
-    }
-  }
-
   throw lastError;
 }
 
-async function callWithFallback(method, params) {
-  const primaryName = getPrimaryProviderName();
-  const fallbackName = FALLBACK_PROVIDER;
+async function withFallback(method, params) {
+  let lastError;
+  for (const providerName of providerSequence()) {
+    try { return await call(providerName, method, params); }
+    catch (error) { lastError = error; }
+  }
+  throw (isMalformedResponse(lastError) ? aiResponseInvalid(lastError) : liveAiUnavailable(lastError));
+}
 
-  try {
-    const result = await callWithRetry(primaryName, method, params);
-    return result;
-  } catch (primaryError) {
-    if (primaryName === fallbackName) {
-      throw primaryError;
-    }
+function validateTurn(type, data, isFinal) {
+  if (!data || typeof data.betterAnswer !== 'string' || !data.updatedSummary || typeof data.updatedSummary !== 'string') throw new Error('Missing AI turn fields');
+  if (data.updatedSummary.split(/\s+/).length > 180) data.updatedSummary = data.updatedSummary.split(/\s+/).slice(0, 150).join(' ');
+  data.analytics = normalizeAnalytics(type, data.analytics);
+  if (typeof data.nextQuestion === 'string') {
+    data.nextQuestion = { content: data.nextQuestion, difficulty: data.nextDifficulty || data.difficulty || 'MEDIUM' };
+  } else if (data.nextQuestion && !data.nextQuestion.content && typeof data.nextQuestion.question === 'string') {
+    data.nextQuestion.content = data.nextQuestion.question;
+  }
+  if (data.nextQuestion?.difficulty) data.nextQuestion.difficulty = String(data.nextQuestion.difficulty).toUpperCase();
+  if (isFinal) data.nextQuestion = null;
+  if (!isFinal && (!data.nextQuestion || typeof data.nextQuestion.content !== 'string' || !['EASY', 'MEDIUM', 'HARD'].includes(data.nextQuestion.difficulty))) throw new Error('Invalid next question');
+  return data;
+}
 
-    if (!process.env.AI_FALLBACK_ENABLED || process.env.AI_FALLBACK_ENABLED === 'false') {
-      throw primaryError;
-    }
-
+async function callValidatedTurn(providerName, params) {
+  const provider = PROVIDERS[providerName];
+  if (!provider) throw new AppError(`Unknown AI provider: ${providerName}`, 500);
+  let lastError;
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
     try {
-      const fallbackResult = await callWithRetry(fallbackName, method, params);
-      return fallbackResult;
-    } catch (fallbackError) {
-      throw primaryError;
+      const result = await provider.generateInterviewTurn(params);
+      const validated = validateTurn(params.interviewType, result, params.questionNumber >= params.questionLimit);
+      return validated;
+    } catch (error) {
+      lastError = error;
     }
   }
+  throw lastError;
 }
 
 async function generateInterviewTurn(params) {
-  const result = await callWithFallback('generateInterviewTurn', params);
-
-  validateInterviewResponse(result);
-
-  return {
-    evaluation: {
-      score: clampScore(result.evaluation.score),
-      feedback: String(result.evaluation.feedback || ''),
-      betterAnswer: result.evaluation.betterAnswer || null,
-      explanation: result.evaluation.explanation || null,
-    },
-    analytics: normalizeAnalytics(result.analytics),
-    nextQuestion: result.nextQuestion
-      ? {
-          content: String(result.nextQuestion.content || ''),
-          difficulty: result.nextQuestion.difficulty || 'MEDIUM',
-        }
-      : null,
-    shouldHire: Boolean(result.shouldHire),
-    hireReason: String(result.hireReason || ''),
-    improvements: Array.isArray(result.improvements) ? result.improvements.map(String) : [],
-    shouldEnd: Boolean(result.shouldEnd),
-  };
-}
-
-async function generateFirstQuestion(params) {
-  const providerName = getPrimaryProviderName();
-
-  try {
-    const result = await callWithFallback('generateFirstQuestion', params);
-    return {
-      content: String(result.content || result.question || 'Can you tell me about yourself?'),
-      difficulty: result.difficulty || params.difficulty || 'EASY',
-    };
-  } catch (error) {
-    if (providerName !== 'mock') {
-      return getProvider('mock').generateFirstQuestion(params);
-    }
-    throw error;
+  let lastError;
+  for (const providerName of providerSequence()) {
+    try { return await callValidatedTurn(providerName, params); }
+    catch (error) { lastError = error; }
   }
+  throw (isMalformedResponse(lastError) ? aiResponseInvalid(lastError) : liveAiUnavailable(lastError));
 }
-
-async function generateStructuredResponse(prompts) {
-  const result = await callWithFallback('generateStructuredResponse', prompts);
+async function generateFirstQuestion(params) { return withFallback('generateFirstQuestion', params); }
+async function generateFinalEvaluation(params) {
+  const result = await withFallback('generateStructuredResponse', promptBuilder.buildFinalEvaluationPrompt(params));
+  if (!result || typeof result.overallSummary !== 'string' || !Array.isArray(result.strengths) || !Array.isArray(result.weaknesses)) throw new AppError('Invalid final evaluation response.', 502);
   return result;
 }
 
-function buildResumeSummaryPrompt(params) {
-  return promptBuilder.buildResumeSummaryPrompt(params);
-}
-
-function normalizeAnalytics(raw) {
-  const defaults = {
-    technicalKnowledge: 50,
-    communication: 50,
-    problemSolving: 50,
-    confidence: 50,
-    grammar: 50,
-    leadership: 50,
-    teamwork: 50,
-    relevance: 50,
-    professionalism: 50,
-  };
-
-  if (!raw || typeof raw !== 'object') return defaults;
-
-  const result = {};
-  for (const [key, defaultVal] of Object.entries(defaults)) {
-    const num = Number(raw[key]);
-    result[key] = isNaN(num) ? defaultVal : Math.max(0, Math.min(100, Math.round(num)));
-  }
-  return result;
-}
-
-function clampScore(value) {
-  const num = Number(value);
-  if (isNaN(num)) return 5;
-  return Math.max(1, Math.min(10, Math.round(num)));
-}
-
-module.exports = {
-  generateInterviewTurn,
-  generateFirstQuestion,
-  generateStructuredResponse,
-  buildResumeSummaryPrompt,
-};
+module.exports = { generateInterviewTurn, generateFirstQuestion, generateFinalEvaluation, generateStructuredResponse: (prompts) => withFallback('generateStructuredResponse', prompts), buildResumeSummaryPrompt: promptBuilder.buildResumeSummaryPrompt };

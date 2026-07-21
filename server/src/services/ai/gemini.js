@@ -1,7 +1,7 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const promptBuilder = require('../promptBuilder');
 
-const MODEL_NAME = 'gemini-1.5-flash';
+const MODEL_NAME = 'gemini-2.0-flash-lite';
 const TIMEOUT_MS = parseInt(process.env.AI_REQUEST_TIMEOUT, 10) || 30000;
 
 let genAI = null;
@@ -21,6 +21,7 @@ function getClient() {
         topP: 0.9,
         topK: 40,
         maxOutputTokens: 2048,
+        responseMimeType: 'application/json',
       },
     });
   }
@@ -64,13 +65,9 @@ async function callGemini(systemPrompt, userPrompt) {
   return text;
 }
 
-async function generateInterviewTurn({ branch, interviewType, conversationHistory, difficulty, resumeSummary }) {
+async function generateInterviewTurn(params) {
   const prompts = promptBuilder.buildInterviewTurnPrompt({
-    branch,
-    interviewType,
-    conversationHistory,
-    difficulty,
-    resumeSummary,
+    ...params,
   });
 
   const raw = await callGemini(prompts.systemPrompt, prompts.userPrompt);
@@ -104,61 +101,7 @@ async function generateStructuredResponse({ systemPrompt, userPrompt }) {
   return JSON.parse(jsonStr);
 }
 
-function normalizeInterviewResponse(data) {
-  return {
-    evaluation: {
-      score: clampScore(data.evaluation?.score, 5),
-      feedback: data.evaluation?.feedback || 'No feedback provided.',
-      betterAnswer: data.evaluation?.betterAnswer || null,
-      explanation: data.evaluation?.explanation || null,
-    },
-    analytics: normalizeAnalytics(data.analytics),
-    nextQuestion: data.nextQuestion
-      ? {
-          content: data.nextQuestion.content || data.nextQuestion,
-          difficulty: data.nextQuestion.difficulty || 'MEDIUM',
-        }
-      : null,
-    shouldHire: data.shouldHire || false,
-    hireReason: data.hireReason || '',
-    improvements: Array.isArray(data.improvements) ? data.improvements : [],
-    shouldEnd: data.shouldEnd || false,
-  };
-}
-
-function normalizeAnalytics(raw) {
-  const defaults = {
-    technicalKnowledge: 50,
-    communication: 50,
-    problemSolving: 50,
-    confidence: 50,
-    grammar: 50,
-    leadership: 50,
-    teamwork: 50,
-    relevance: 50,
-    professionalism: 50,
-  };
-
-  if (!raw || typeof raw !== 'object') return defaults;
-
-  const result = {};
-  for (const [key, defaultVal] of Object.entries(defaults)) {
-    result[key] = clampAnalytics(raw[key], defaultVal);
-  }
-  return result;
-}
-
-function clampScore(value, fallback) {
-  const num = Number(value);
-  if (isNaN(num)) return fallback;
-  return Math.max(1, Math.min(10, Math.round(num)));
-}
-
-function clampAnalytics(value, fallback) {
-  const num = Number(value);
-  if (isNaN(num)) return fallback;
-  return Math.max(0, Math.min(100, Math.round(num)));
-}
+function normalizeInterviewResponse(data) { return data; }
 
 module.exports = {
   generateInterviewTurn,

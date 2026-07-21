@@ -8,54 +8,98 @@ datasource db {
 }
 
 model User {
-  id            String             @id @default(uuid()) @db.Uuid
-  username      String             @unique @db.VarChar(20)
-  passwordHash  String             @map("password_hash") @db.VarChar(255)
-  role          String             @default("USER") @db.VarChar(20)
-  createdAt     DateTime           @default(now()) @map("created_at") @db.Timestamptz()
-  userStats     UserStats?
-  interviews    InterviewSession[]
+  id        String             @id @default(uuid()) @db.Uuid
+  username  String             @unique @db.VarChar(20)
+  passwordHash String           @map("password_hash") @db.VarChar(255)
+  role      String             @default("USER") @db.VarChar(20)
+  createdAt DateTime           @default(now()) @map("created_at") @db.Timestamptz()
+  interviews InterviewSession[]
+  dailyInterviewUsage DailyInterviewUsage[]
+  performanceAggregate UserPerformanceAggregate?
 
   @@map("users")
 }
 
-model UserStats {
-  id              String    @id @default(uuid()) @db.Uuid
-  userId          String    @unique @map("user_id") @db.Uuid
-  livesRemaining  Int       @default(5) @map("lives_remaining")
-  livesResetAt    DateTime  @map("lives_reset_at")
-  currentStreak   Int       @default(0) @map("current_streak")
-  bestStreak      Int       @default(0) @map("best_streak")
-  lastInterviewAt DateTime? @map("last_interview_at")
-  totalInterviews Int       @default(0) @map("total_interviews")
+model UserPerformanceAggregate {
+  id               String   @id @default(uuid()) @db.Uuid
+  userId           String   @unique @map("user_id") @db.Uuid
+  coreSums         Json     @default("{}") @map("core_sums")
+  coreCounts       Json     @default("{}") @map("core_counts")
+  resumeHighScores Json     @default("{}") @map("resume_high_scores")
+  totalAnswers     Int      @default(0) @map("total_answers")
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  user User @relation(fields: [userId], references: [id])
-
-  @@map("user_stats")
+  @@map("user_performance_aggregates")
 }
 
 model InterviewSession {
-  id               String    @id @default(uuid()) @db.Uuid
-  userId           String    @map("user_id") @db.Uuid
-  branch           String?   @db.VarChar(50)
-  interviewType    String    @map("interview_type") @db.VarChar(50)
-  status           String    @db.VarChar(20)
-  difficulty       String    @map("current_difficulty") @db.VarChar(20)
-  conversation     Json      @default("[]")
-  currentQuestion  Json?     @map("current_question")
-  accumulatedScore Int       @default(0) @map("accumulated_score")
-  totalQuestions   Int       @default(0) @map("total_questions")
-  lifeConsumed     Boolean   @default(false) @map("life_consumed")
-  resumeSummary    String?   @map("resume_summary") @db.Text
-  expiresAt        DateTime  @map("expires_at") @db.Timestamptz()
-  startedAt        DateTime  @default(now()) @map("started_at") @db.Timestamptz()
-  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
-  endedAt          DateTime? @map("ended_at") @db.Timestamptz()
+  id                    String   @id @default(uuid()) @db.Uuid
+  userId                String   @map("user_id") @db.Uuid
+  interviewType         String   @map("interview_type") @db.VarChar(20)
+  branch                String?  @db.VarChar(50)
+  status                String   @default("ACTIVE") @db.VarChar(20)
+  questionLimit         Int      @map("question_limit")
+  currentQuestionNumber Int      @default(1) @map("current_question_number")
+  currentQuestion       Json?    @map("current_question")
+  currentDifficulty     String   @default("EASY") @map("current_difficulty") @db.VarChar(20)
+  rollingSummary        String   @default("") @map("rolling_summary") @db.Text
+  resumeSummary         String?  @map("resume_summary") @db.Text
+  startedAt             DateTime @default(now()) @map("started_at") @db.Timestamptz()
+  endedAt               DateTime? @map("ended_at") @db.Timestamptz()
+  overallSummary        String?  @map("overall_summary") @db.Text
+  strengths             Json?    @default("[]")
+  weaknesses            Json?    @default("[]")
+  hireRecommendation    String?  @map("hire_recommendation") @db.VarChar(30)
+  hireReason            String?  @map("hire_reason") @db.Text
+  learningRoadmap       Json?    @default("[]") @map("learning_roadmap")
+  createdAt             DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt             DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  answers               InterviewAnswer[]
 
-  user User @relation(fields: [userId], references: [id])
-
-  @@index([userId])
+  @@index([userId, updatedAt])
   @@index([userId, status])
-  @@index([userId, interviewType, branch])
+  @@index([userId, interviewType])
   @@map("interview_sessions")
+}
+
+model InterviewAnswer {
+  id            String   @id @default(uuid()) @db.Uuid
+  sessionId     String   @map("session_id") @db.Uuid
+  questionNumber Int     @map("question_number")
+  question      String   @db.Text
+  userAnswer    String   @map("user_answer") @db.Text
+  betterAnswer  String   @map("better_answer") @db.Text
+  difficulty    String   @db.VarChar(20)
+  analytics     Json     @map("analytics_json")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  session       InterviewSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, questionNumber])
+  @@index([sessionId, questionNumber])
+  @@map("interview_answers")
+}
+
+model InterviewQuestionBank {
+  id            String  @id @default(uuid()) @db.Uuid
+  interviewType String  @map("interview_type") @db.VarChar(20)
+  branch        String? @db.VarChar(50)
+  difficulty    String  @db.VarChar(20)
+  question      String  @db.Text
+  isActive      Boolean @default(true) @map("is_active")
+
+  @@index([interviewType, branch, isActive])
+  @@map("interview_question_bank")
+}
+
+model DailyInterviewUsage {
+  id                String   @id @default(uuid()) @db.Uuid
+  userId            String   @map("user_id") @db.Uuid
+  date              DateTime @db.Date
+  interviewsStarted Int      @default(0) @map("interviews_started")
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@map("daily_interview_usage")
 }

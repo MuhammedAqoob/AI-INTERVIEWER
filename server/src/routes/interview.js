@@ -2,28 +2,32 @@ const express = require('express');
 const {
   getOptions,
   getSession,
-  getActiveSessions,
+  getSessions,
+  getHistory,
+  getSessionDetails,
   start,
   startResume,
   answer,
-  end,
-  refresh,
+  pause,
+  resume,
+  deleteSession,
 } = require('../controllers/interviewController');
+const { getLeaderboard } = require('../controllers/leaderboardController');
 const authenticate = require('../middleware/authenticate');
 const {
   startInterviewValidation,
   startResumeInterviewValidation,
   answerValidation,
-  endInterviewValidation,
-  refreshInterviewValidation,
   validateSessionIdQuery,
+  validateSessionIdParam,
+  historyValidation,
 } = require('../middleware/validate');
 const {
   interviewStartLimiter,
   interviewAnswerLimiter,
-  interviewEndLimiter,
-  interviewRefreshLimiter,
+  interviewDeleteLimiter,
   interviewStatusLimiter,
+  leaderboardLimiter,
 } = require('../middleware/rateLimiter');
 const { upload, handleMulterError } = require('../middleware/upload');
 
@@ -33,7 +37,11 @@ router.get('/options', authenticate, getOptions);
 
 router.get('/status', authenticate, interviewStatusLimiter, validateSessionIdQuery, getSession);
 
-router.get('/active', authenticate, interviewStatusLimiter, getActiveSessions);
+router.get('/sessions', authenticate, interviewStatusLimiter, getSessions);
+
+router.get('/history', authenticate, interviewStatusLimiter, historyValidation, getHistory);
+
+router.get('/leaderboard', leaderboardLimiter, getLeaderboard);
 
 router.post(
   '/start',
@@ -42,6 +50,11 @@ router.post(
   startInterviewValidation,
   start
 );
+
+router.get('/:sessionId', authenticate, interviewStatusLimiter, validateSessionIdParam, getSessionDetails);
+
+router.post('/:sessionId/pause', authenticate, interviewStatusLimiter, validateSessionIdParam, pause);
+router.post('/:sessionId/resume', authenticate, interviewStatusLimiter, validateSessionIdParam, resume);
 
 router.post(
   '/start-resume',
@@ -61,20 +74,12 @@ router.post(
   answer
 );
 
-router.post(
-  '/end',
+router.delete(
+  '/:sessionId',
   authenticate,
-  interviewEndLimiter,
-  endInterviewValidation,
-  end
-);
-
-router.post(
-  '/refresh',
-  authenticate,
-  interviewRefreshLimiter,
-  refreshInterviewValidation,
-  refresh
+  interviewDeleteLimiter,
+  validateSessionIdParam,
+  deleteSession
 );
 
 module.exports = router;

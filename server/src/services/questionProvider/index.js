@@ -6,7 +6,12 @@ function pickRandom(array) {
   return array[index];
 }
 
-function getRandomQuestion(branch, interviewType) {
+async function getRandomQuestion(branch, interviewType) {
+  const prisma = require('../../config/database');
+  const where = { interviewType, branch: BRANCH_REQUIRED_TYPES.includes(interviewType) ? branch : null, isActive: true };
+  const count = await prisma.interviewQuestionBank.count({ where });
+  const databaseQuestion = count ? await prisma.interviewQuestionBank.findFirst({ where, skip: Math.floor(Math.random() * count) }) : null;
+  if (databaseQuestion) return { content: databaseQuestion.question, difficulty: databaseQuestion.difficulty };
   let questionPool;
 
   if (BRANCH_REQUIRED_TYPES.includes(interviewType)) {

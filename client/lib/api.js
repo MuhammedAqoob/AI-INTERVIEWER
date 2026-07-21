@@ -38,7 +38,7 @@ export const auth = {
 
 export const dashboard = {
   summary: () => request('/dashboard/summary'),
-  activeSessions: () => request('/interview/active'),
+  sessions: () => request('/interview/sessions'),
 };
 
 export const interview = {
@@ -49,27 +49,51 @@ export const interview = {
     return request(`/interview/status${params}`);
   },
 
-  start: (interviewType, branch) =>
+  details: (sessionId) => request(`/interview/${sessionId}`),
+
+  history: () => request('/interview/history'),
+
+  start: (interviewType, branch, questionLimit) =>
     request('/interview/start', {
       method: 'POST',
-      body: JSON.stringify({ interviewType, branch: branch || undefined }),
+      body: JSON.stringify({ interviewType, branch: branch || undefined, questionLimit }),
     }),
+
+  startResume: (file, questionLimit) => {
+    const formData = new FormData();
+    formData.append('resume', file);
+    formData.append('questionLimit', questionLimit);
+    const url = `${API_BASE}/interview/start-resume`;
+    return fetch(url, {
+      method: 'POST',
+      credentials: 'include',
+      body: formData,
+    }).then(async (response) => {
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || 'Request failed');
+      }
+      return data;
+    });
+  },
 
   answer: (sessionId, answer) =>
     request('/interview/answer', {
       method: 'POST',
       body: JSON.stringify({ sessionId, answer }),
     }),
+  pause: (sessionId) => request(`/interview/${sessionId}/pause`, { method: 'POST' }),
+  resume: (sessionId) => request(`/interview/${sessionId}/resume`, { method: 'POST' }),
 
-  end: (sessionId) =>
-    request('/interview/end', {
-      method: 'POST',
-      body: JSON.stringify({ sessionId }),
-    }),
+  sessions: () => request('/interview/sessions'),
 
-  refresh: (interviewType, branch) =>
-    request('/interview/refresh', {
-      method: 'POST',
-      body: JSON.stringify({ interviewType, branch: branch || undefined }),
+  delete: (sessionId) =>
+    request(`/interview/${sessionId}`, {
+      method: 'DELETE',
     }),
+};
+
+export const leaderboard = {
+  list: (limit) =>
+    request(`/interview/leaderboard${limit ? `?limit=${limit}` : ''}`),
 };
