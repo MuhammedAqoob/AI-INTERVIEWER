@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { Button, Input, Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter, Spinner } from '../../components/ui';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -18,7 +19,7 @@ export default function LoginPage() {
     fetch('/api/auth/me', { credentials: 'include' })
       .then((res) => {
         if (res.ok) {
-          router.push('/dashboard');
+          router.push('/');
         } else {
           setCheckingAuth(false);
         }
@@ -56,7 +57,7 @@ export default function LoginPage() {
         throw new Error(data.message || 'Login failed');
       }
 
-      router.push('/dashboard');
+      router.push('/');
     } catch (err) {
       setError(err.message);
     } finally {
@@ -66,69 +67,91 @@ export default function LoginPage() {
 
   if (checkingAuth) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-gray-500">Loading...</div>
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
+        <div className="flex items-center gap-3 text-slate-500 dark:text-slate-400 text-sm font-medium">
+          <Spinner className="w-5 h-5 text-brand-600 dark:text-brand-400" />
+          <span>Verifying session...</span>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="w-full max-w-md p-8 bg-white rounded-lg shadow">
-        <h1 className="text-2xl font-bold text-center mb-6">Login</h1>
-
-        {error && (
-          <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded">
-            {error}
+    <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950 p-4 transition-colors">
+      <div className="w-full max-w-md">
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-brand-600 dark:bg-brand-500 text-white font-black text-2xl shadow-lg shadow-brand-500/25 mb-4">
+            AI
           </div>
-        )}
+          <h1 className="text-2xl font-extrabold text-slate-900 dark:text-slate-100 tracking-tight">
+            Welcome Back
+          </h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+            Sign in to continue practicing AI interviews
+          </p>
+        </div>
 
-        <form onSubmit={handleSubmit}>
-          <div className="mb-4">
-            <label htmlFor="username" className="block text-sm font-medium text-gray-700 mb-1">
-              Username
-            </label>
-            <input
-              type="text"
-              id="username"
-              name="username"
-              value={formData.username}
-              onChange={handleChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-              required
-            />
-          </div>
+        <Card className="border border-slate-200/80 dark:border-slate-800 shadow-xl">
+          <CardContent className="pt-8">
+            {error && (
+              <div
+                role="alert"
+                className="mb-6 p-4 bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 rounded-xl text-sm flex items-start gap-2.5 animate-in fade-in duration-200"
+              >
+                <svg className="w-5 h-5 flex-shrink-0 mt-0.5 text-rose-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <span>{error}</span>
+              </div>
+            )}
 
-          <div className="mb-6">
-            <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
-              Password
-            </label>
-            <input
-              type="password"
-              id="password"
-              name="password"
-              value={formData.password}
-              onChange={handleChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-              required
-            />
-          </div>
+            <form onSubmit={handleSubmit} className="space-y-5">
+              <Input
+                label="Username"
+                type="text"
+                name="username"
+                autoComplete="username"
+                value={formData.username}
+                onChange={handleChange}
+                placeholder="Enter your username"
+                required
+              />
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-2 px-4 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
-          >
-            {loading ? 'Logging in...' : 'Login'}
-          </button>
-        </form>
+              <Input
+                label="Password"
+                type="password"
+                name="password"
+                autoComplete="current-password"
+                value={formData.password}
+                onChange={handleChange}
+                placeholder="••••••••"
+                required
+              />
 
-        <p className="mt-4 text-center text-sm text-gray-600">
-          Don't have an account?{' '}
-          <Link href="/register" className="text-blue-600 hover:underline">
-            Register
-          </Link>
-        </p>
+              <Button
+                type="submit"
+                variant="primary"
+                size="lg"
+                loading={loading}
+                className="w-full mt-2"
+              >
+                Sign In
+              </Button>
+            </form>
+          </CardContent>
+
+          <CardFooter className="justify-center border-t border-slate-100 dark:border-slate-800/80 bg-slate-50/50 dark:bg-slate-900/50">
+            <p className="text-sm text-slate-600 dark:text-slate-400">
+              Don't have an account?{' '}
+              <Link
+                href="/register"
+                className="font-semibold text-brand-600 dark:text-brand-400 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 rounded-sm"
+              >
+                Create one now
+              </Link>
+            </p>
+          </CardFooter>
+        </Card>
       </div>
     </div>
   );

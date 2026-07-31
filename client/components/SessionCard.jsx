@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { DifficultyBadge, TypeBadge, Spinner } from './ui';
+import { DifficultyBadge, TypeBadge, Button } from './ui';
 import { formatDate, formatDateTime, titleCase } from '../lib/format';
 
 export default function SessionCard({
@@ -17,54 +17,53 @@ export default function SessionCard({
   const resume = () => router.push(`/interview/${id}`);
 
   return (
-    <div className="bg-white border border-gray-200 rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-      <div className="min-w-0">
-        <div className="flex flex-wrap items-center gap-2 mb-1">
+    <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm hover:shadow-md transition-all duration-200">
+      <div className="min-w-0 space-y-1">
+        <div className="flex flex-wrap items-center gap-2 mb-1.5">
           <TypeBadge type={session.interviewType} />
           {session.branch && (
-            <span className="text-sm font-semibold text-gray-900">
+            <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
               {titleCase(session.branch)}
             </span>
           )}
           {session.difficulty && <DifficultyBadge difficulty={session.difficulty} />}
         </div>
-        <p className="text-sm text-gray-500">
-          Avg: {session.overallAverage ?? 0}
+        
+        <p className="text-sm text-slate-600 dark:text-slate-400">
+          <span className="font-semibold text-slate-900 dark:text-slate-200">
+            Avg Score: {session.overallAverage ?? 0}
+          </span>
           {typeof session.turnCount === 'number' && ` • ${session.turnCount} answered`}
           {typeof session.analyticsSamples === 'number' &&
             session.analyticsSamples > 0 &&
             ` • ${session.analyticsSamples} evaluated`}
         </p>
-        <p className="text-xs text-gray-400 mt-1">
+
+        <p className="text-xs text-slate-400 dark:text-slate-500">
           Created {formatDate(session.createdAt || session.startedAt)}
           {session.updatedAt ? ` • Updated ${formatDateTime(session.updatedAt)}` : ''}
         </p>
       </div>
+
       <div className="flex items-center gap-2 flex-shrink-0">
         {canResume && (
-          <button
-            onClick={resume}
-            className="px-5 py-2.5 bg-blue-600 text-white text-sm font-medium rounded-xl hover:bg-blue-700 transition-colors"
-          >
+          <Button variant="primary" size="sm" onClick={resume}>
             Resume
-          </button>
+          </Button>
         )}
         {showDetails && onViewDetails && (
-          <button
-            onClick={() => onViewDetails(id)}
-            className="px-5 py-2.5 bg-white text-gray-700 text-sm font-medium rounded-xl border border-gray-200 hover:bg-gray-50 transition-colors"
-          >
+          <Button variant="outline" size="sm" onClick={() => onViewDetails(id)}>
             Details
-          </button>
+          </Button>
         )}
-        <button
+        <Button
+          variant="danger"
+          size="sm"
+          loading={deleting}
           onClick={() => onDelete?.(id)}
-          disabled={deleting}
-          className="px-5 py-2.5 bg-white text-red-600 text-sm font-medium rounded-xl border border-red-200 hover:bg-red-50 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {deleting && <Spinner className="w-4 h-4" />}
           Delete
-        </button>
+        </Button>
       </div>
     </div>
   );

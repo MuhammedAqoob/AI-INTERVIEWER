@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { interview } from '../../../lib/api';
-import { Spinner, TypeBadge, DifficultyBadge } from '../../../components/ui';
+import { Spinner, TypeBadge, DifficultyBadge, Button, Card, CardContent } from '../../../components/ui';
 import { formatDate, formatDateTime, titleCase } from '../../../lib/format';
 
 export default function SessionDetailsPage() {
@@ -44,24 +44,24 @@ export default function SessionDetailsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <Spinner className="w-8 h-8 text-blue-600" />
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center">
+        <div className="flex items-center gap-3 text-slate-500 text-sm font-medium">
+          <Spinner className="w-6 h-6 text-brand-600 dark:text-brand-400" />
+          <span>Loading session details...</span>
+        </div>
       </div>
     );
   }
 
   if (error && !data) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-red-600 mb-4">{error}</p>
-          <button
-            onClick={() => router.push('/history')}
-            className="px-5 py-2.5 bg-blue-600 text-white text-sm font-medium rounded-xl hover:bg-blue-700 transition-colors"
-          >
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center p-4">
+        <Card className="p-8 text-center max-w-md w-full">
+          <p className="text-rose-600 dark:text-rose-400 font-semibold mb-4">{error}</p>
+          <Button variant="primary" onClick={() => router.push('/history')}>
             Back to History
-          </button>
-        </div>
+          </Button>
+        </Card>
       </div>
     );
   }
@@ -69,89 +69,102 @@ export default function SessionDetailsPage() {
   const turns = Array.isArray(data.answers) ? data.answers : [];
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <nav className="bg-white shadow">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16 items-center">
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => router.push('/history')}
-                className="text-sm text-gray-500 hover:text-gray-700 transition-colors flex items-center gap-1"
-              >
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors pb-12">
+      {/* Header */}
+      <header className="bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800/80 sticky top-0 z-30">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => router.push('/history')}
+              icon={
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                 </svg>
-                Back
-              </button>
-              <h1 className="text-xl font-bold text-gray-900">Session Details</h1>
-            </div>
-            <button
-              onClick={() => router.push(`/interview/${id}`)}
-              className="px-5 py-2.5 bg-blue-600 text-white text-sm font-medium rounded-xl hover:bg-blue-700 transition-colors"
+              }
             >
-              {data.status === 'PAUSED' ? 'Continue' : 'View Interview'}
-            </button>
+              Back
+            </Button>
+            <h1 className="text-lg font-bold text-slate-900 dark:text-slate-100">Session Details</h1>
           </div>
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => router.push(`/interview/${id}`)}
+          >
+            {data.status === 'PAUSED' ? 'Continue Interview' : 'View Room'}
+          </Button>
         </div>
-      </nav>
+      </header>
 
-      <main className="max-w-4xl mx-auto py-10 px-4 space-y-8">
+      <main className="max-w-5xl mx-auto py-10 px-4 sm:px-6 space-y-8">
         {error && (
-          <div className="p-3 bg-red-100 border border-red-400 text-red-700 rounded-lg text-sm">
+          <div role="alert" className="p-4 bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 rounded-2xl text-sm">
             {error}
           </div>
         )}
 
-        {/* Metadata */}
-        <section className="bg-white rounded-2xl border border-gray-200 p-6">
+        {/* Metadata Section */}
+        <Card className="p-6 border-slate-200/80 dark:border-slate-800">
           <div className="flex flex-wrap items-center gap-2 mb-4">
             <TypeBadge type={data.interviewType} />
             {data.branch && (
-              <span className="text-lg font-semibold text-gray-900">
+              <span className="text-lg font-bold text-slate-900 dark:text-slate-100">
                 {titleCase(data.branch)}
               </span>
             )}
             {data.difficulty && <DifficultyBadge difficulty={data.difficulty} />}
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm pt-2 border-t border-slate-100 dark:border-slate-800">
             <Meta label="Status" value={data.status} />
             <Meta label="Question Limit" value={data.questionLimit ?? 0} />
             <Meta label="Answered" value={data.turnCount ?? data.totalQuestions ?? 0} />
             <Meta label="Created" value={formatDate(data.createdAt || data.startedAt)} />
           </div>
-          <p className="text-xs text-gray-400 mt-3">
+          <p className="text-xs text-slate-400 dark:text-slate-500 mt-4">
             Last updated {formatDateTime(data.updatedAt)}
           </p>
-        </section>
+        </Card>
 
-        {/* Conversation */}
-        <section>
-          <h2 className="text-sm font-medium text-gray-500 mb-3">
-            Questions ({turns.length})
+        {/* Question & Evaluation Breakdown */}
+        <section className="space-y-4">
+          <h2 className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+            Questions & Answers ({turns.length})
           </h2>
+
           {turns.length === 0 ? (
-            <div className="bg-white rounded-2xl border border-gray-200 p-8 text-center text-sm text-gray-400">
-              No turns recorded yet.
-            </div>
+            <Card className="p-8 text-center text-sm text-slate-400 dark:text-slate-500 border-slate-200/80 dark:border-slate-800">
+              No questions answered recorded for this session yet.
+            </Card>
           ) : (
             <div className="space-y-4">
               {turns.map((turn, i) => (
-                <div
-                  key={i}
-                  className="bg-white rounded-2xl border border-gray-200 p-5 space-y-3"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
-                      Question {turn.questionNumber || i + 1}
-                    </span>
-                  </div>
-                  <Block label="Question" content={turn.question} />
-                  <Block label="Your Answer" content={turn.userAnswer} tone="user" />
-                  {turn.betterAnswer && (
-                    <Block label="Better Answer" content={turn.betterAnswer} tone="better" />
-                  )}
-                  <div className="text-xs text-gray-500">{Object.entries(turn.analytics || {}).map(([key, value]) => `${key}: ${value}`).join(' · ')}</div>
-                </div>
+                <Card key={i} className="border-slate-200/80 dark:border-slate-800">
+                  <CardContent className="p-6 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-brand-600 dark:text-brand-400 uppercase tracking-wider">
+                        Question {turn.questionNumber || i + 1}
+                      </span>
+                    </div>
+
+                    <Block label="Question" content={turn.question} tone="question" />
+                    <Block label="Your Answer" content={turn.userAnswer} tone="user" />
+                    {turn.betterAnswer && (
+                      <Block label="Better / Suggested Answer" content={turn.betterAnswer} tone="better" />
+                    )}
+
+                    {turn.analytics && (
+                      <div className="pt-2 border-t border-slate-100 dark:border-slate-800 text-xs text-slate-500 dark:text-slate-400 flex flex-wrap gap-2">
+                        {Object.entries(turn.analytics).map(([key, val]) => (
+                          <span key={key} className="bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md">
+                            {key}: <strong className="text-slate-800 dark:text-slate-200">{val}</strong>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
               ))}
             </div>
           )}
@@ -164,23 +177,23 @@ export default function SessionDetailsPage() {
 function Meta({ label, value }) {
   return (
     <div>
-      <p className="text-xs text-gray-400">{label}</p>
-      <p className="font-semibold text-gray-900">{value}</p>
+      <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">{label}</p>
+      <p className="font-bold text-slate-900 dark:text-slate-100 mt-0.5">{value}</p>
     </div>
   );
 }
 
 function Block({ label, content, tone }) {
-  const tones = {
-    user: 'bg-blue-50 border-blue-200',
-    feedback: 'bg-amber-50 border-amber-200',
-    better: 'bg-emerald-50 border-emerald-200',
-    explain: 'bg-blue-50 border-blue-200',
+  const toneStyles = {
+    question: 'bg-slate-100/70 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700/60 text-slate-900 dark:text-slate-100',
+    user: 'bg-brand-50/60 dark:bg-brand-950/40 border-brand-200/60 dark:border-brand-800/60 text-slate-800 dark:text-slate-200',
+    better: 'bg-emerald-50/60 dark:bg-emerald-950/40 border-emerald-200/60 dark:border-emerald-800/60 text-slate-800 dark:text-slate-200',
   };
+
   return (
-    <div className={`rounded-xl border px-4 py-3 ${tones[tone] || 'bg-gray-50 border-gray-200'}`}>
-      <p className="text-xs font-semibold text-gray-500 mb-1">{label}</p>
-      <p className="text-sm text-gray-800 whitespace-pre-wrap">{content || '—'}</p>
+    <div className={`p-4 rounded-xl border ${toneStyles[tone] || 'bg-slate-50 dark:bg-slate-800'}`}>
+      <p className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">{label}</p>
+      <p className="text-sm leading-relaxed whitespace-pre-wrap">{content || '—'}</p>
     </div>
   );
 }

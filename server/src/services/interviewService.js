@@ -58,10 +58,50 @@ async function submitAnswer(userId, { sessionId, answer }) {
     return { answer: savedAnswer, betterAnswer: turn.betterAnswer, analytics: turn.analytics, nextQuestion: updated.currentQuestion, interviewEnded: isFinal, status: updated.status, questionNumber: session.currentQuestionNumber, questionLimit: session.questionLimit, finalEvaluation: isFinal ? serialize(updated) : null };
   } finally { processing.delete(sessionId); }
 }
-async function pause(userId, sessionId) { const session = await owned(userId, sessionId); if (session.status === 'ACTIVE') return serialize(await prisma.interviewSession.update({ where: { id: sessionId }, data: { status: 'PAUSED' } })); return serialize(session); }
-async function resume(userId, sessionId) { const session = await owned(userId, sessionId); if (session.status !== 'PAUSED') throw new AppError('Only paused interviews can be continued.', 409); return serialize(await prisma.interviewSession.update({ where: { id: sessionId }, data: { status: 'ACTIVE' } })); }
+async function pause(userId, sessionId) {
+  const session = await owned(userId, sessionId, true);
+  if (session.status === 'ACTIVE') {
+    return serialize(
+      await prisma.interviewSession.update({
+        where: { id: sessionId },
+        data: { status: 'PAUSED' },
+      }),
+      true
+    );
+  }
+  return serialize(session, true);
+}
+
+async function resume(userId, sessionId) {
+  const session = await owned(userId, sessionId, true);
+  if (session.status === 'ACTIVE') {
+    return serialize(session, true);
+  }
+  if (session.status !== 'PAUSED') {
+    throw new AppError('Only paused interviews can be continued.', 409);
+  }
+  return serialize(
+    await prisma.interviewSession.update({
+      where: { id: sessionId },
+      data: { status: 'ACTIVE' },
+    }),
+    true
+  );
+}
+
+async function endSession(userId, sessionId) {
+  const session = await owned(userId, sessionId, true);
+  if (session.status === 'COMPLETED') {
+    return serialize(session, true);
+  }
+  const answers = session.answers || [];
+  const updated = await finish(session, answers);
+  return serialize(updated, true);
+}
+
 async function getSessionById(userId, id) { return serialize(await owned(userId, id, true), true); }
 async function getSessionsForUser(userId) { const rows = await prisma.interviewSession.findMany({ where: { userId }, include: { answers: { select: { id: true } } }, orderBy: { updatedAt: 'desc' } }); return rows.map((s) => serialize(s)); }
 async function getHistory(userId) { return getSessionsForUser(userId); }
 async function deleteSession(userId, id) { await owned(userId, id); await prisma.interviewSession.delete({ where: { id } }); return { sessionId: id, deleted: true }; }
-module.exports = { startInterview, startResumeInterview, submitAnswer, pause, resume, getSessionById, getSessionDetails: getSessionById, getSessionsForUser, getHistory, deleteSession };
+module.exports = { startInterview, startResumeInterview, submitAnswer, pause, resume, endSession, getSessionById, getSessionDetails: getSessionById, getSessionsForUser, getHistory, deleteSession };
+

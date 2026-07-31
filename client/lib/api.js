@@ -84,6 +84,7 @@ export const interview = {
     }),
   pause: (sessionId) => request(`/interview/${sessionId}/pause`, { method: 'POST' }),
   resume: (sessionId) => request(`/interview/${sessionId}/resume`, { method: 'POST' }),
+  end: (sessionId) => request(`/interview/${sessionId}/end`, { method: 'POST' }),
 
   sessions: () => request('/interview/sessions'),
 
