@@ -1,7 +1,7 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const promptBuilder = require('../promptBuilder');
 
-const MODEL_NAME = 'gemini-2.0-flash-lite';
+const MODEL_NAME = 'gemini-3.5-flash-lite';
 const TIMEOUT_MS = parseInt(process.env.AI_REQUEST_TIMEOUT, 10) || 30000;
 
 let genAI = null;
