@@ -1,6 +1,7 @@
 const prisma = require('../config/database');
 const { STRATEGIES, CORE_TYPES, CORE_METRICS } = require('./interviewStrategy');
 const { INTERVIEW_TYPES } = require('../constants/interviewTypes');
+const { del } = require('../lib/redis/cache');
 
 const blank = () => Object.fromEntries(CORE_METRICS.map((key) => [key, 0]));
 const number = (value) => Number.isFinite(Number(value)) ? Number(value) : 0;
@@ -53,7 +54,15 @@ async function ensureAggregate(userId) {
 async function recordAnswer(userId, interviewType, analytics) {
   const current = await prisma.userPerformanceAggregate.findUnique({ where: { userId } }) || await ensureAggregate(userId);
   const next = applyAnswer(current, interviewType, analytics);
-  return prisma.userPerformanceAggregate.update({ where: { userId }, data: next });
+  const result = await prisma.userPerformanceAggregate.update({ where: { userId }, data: next });
+  // Invalidate the cached leaderboard because the user's performance has changed.
+  // Guarded so a Redis failure can never break the answer-write path.
+  try {
+    await del('leaderboard:global');
+  } catch (err) {
+    if (process.env.NODE_ENV !== 'production') console.error('Failed to invalidate leaderboard cache:', err);
+  }
+  return result;
 }
 
 async function backfillAll() {
