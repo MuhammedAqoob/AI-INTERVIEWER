@@ -5,9 +5,11 @@ const performanceService = require('./performanceService');
 const { INTERVIEW_TYPES } = require('../constants/interviewTypes');
 const { getStrategy } = require('./interviewStrategy');
 const AppError = require('../utils/AppError');
+const { randomUUID } = require('crypto');
 
 const processing = new Set();
 const DAY_LIMIT = 5;
+const answerClaimTtl = () => Number.parseInt(process.env.ANSWER_CLAIM_TTL_MS, 10) || 90000;
 
 function today() { const d = new Date(); return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())); }
 function sessionMetrics(answers, interviewType) {
@@ -55,12 +57,43 @@ async function owned(userId, sessionId, includeAnswers = false) {
   return session;
 }
 function average(answers, type) { const keys = getStrategy(type).analytics; const totals = Object.fromEntries(keys.map((k) => [k, 0])); for (const answer of answers) for (const key of keys) totals[key] += Number(answer.analytics?.[key] || 0); return Object.fromEntries(keys.map((k) => [k, answers.length ? Math.round(totals[k] / answers.length) : 0])); }
+
+async function claimAnswer(userId, session) {
+  const token = randomUUID();
+  const staleBefore = new Date(Date.now() - answerClaimTtl());
+  const claim = await prisma.interviewSession.updateMany({
+    where: {
+      id: session.id,
+      userId,
+      status: 'ACTIVE',
+      currentQuestionNumber: session.currentQuestionNumber,
+      revision: session.revision || 0,
+      OR: [{ answerClaimToken: null }, { answerClaimedAt: { lte: staleBefore } }],
+    },
+    data: { answerClaimToken: token, answerClaimedAt: new Date(), revision: { increment: 1 } },
+  });
+  if (claim.count !== 1) throw new AppError('This interview question is already being processed or has changed. Please refresh and try again.', 409);
+  return { token, revision: (session.revision || 0) + 1 };
+}
+
+async function releaseAnswerClaim(sessionId, token) {
+  await prisma.interviewSession.updateMany({
+    where: { id: sessionId, answerClaimToken: token },
+    data: { answerClaimToken: null, answerClaimedAt: null, revision: { increment: 1 } },
+  });
+}
+
 async function submitAnswer(userId, { sessionId, answer }) {
   if (processing.has(sessionId)) throw new AppError('Answer is already being processed.', 409);
   processing.add(sessionId);
+  let claim;
   try {
     const session = await owned(userId, sessionId, true);
     if (session.status !== 'ACTIVE' || !session.currentQuestion) throw new AppError('This interview is not active.', 409);
+    // Claim the exact question/version before any external AI work. The claim
+    // is short-lived and is also enforced again in the final DB transaction.
+    claim = await claimAnswer(userId, session);
+    await performanceService.ensureAggregate(userId);
     const turn = await ai.generateInterviewTurn({ interviewType: session.interviewType, branch: session.branch, questionNumber: session.currentQuestionNumber, questionLimit: session.questionLimit, difficulty: session.currentDifficulty, rollingSummary: session.rollingSummary, currentQuestion: session.currentQuestion.content, candidateAnswer: answer });
     const isFinal = session.currentQuestionNumber >= session.questionLimit;
     // Generate the final evaluation BEFORE mutating the session. If the AI
@@ -70,35 +103,34 @@ async function submitAnswer(userId, { sessionId, answer }) {
     const final = isFinal
       ? await ai.generateFinalEvaluation({ interviewType: session.interviewType, rollingSummary: turn.updatedSummary, analytics: average(allAnswers, session.interviewType), questionCount: allAnswers.length })
       : null;
-    // Create the immutable user-level score snapshot before the new answer is
-    // saved, then add this answer once. Deleting a session never subtracts it.
-    await performanceService.ensureAggregate(userId);
     const [savedAnswer, updated] = await prisma.$transaction(async (tx) => {
       const saved = await tx.interviewAnswer.create({ data: { sessionId, questionNumber: session.currentQuestionNumber, question: session.currentQuestion.content, userAnswer: answer, betterAnswer: turn.betterAnswer, difficulty: session.currentDifficulty, analytics: turn.analytics } });
-      const updated = await tx.interviewSession.update({
-        where: { id: sessionId },
+      const sessionUpdate = await tx.interviewSession.updateMany({
+        where: { id: sessionId, userId, status: 'ACTIVE', currentQuestionNumber: session.currentQuestionNumber, revision: claim.revision, answerClaimToken: claim.token },
         data: isFinal
-          ? { status: 'COMPLETED', endedAt: new Date(), currentQuestion: null, rollingSummary: turn.updatedSummary, overallSummary: final.overallSummary, strengths: final.strengths, weaknesses: final.weaknesses, hireRecommendation: final.hireRecommendation, hireReason: final.hireReason, learningRoadmap: final.learningRoadmap }
-          : { rollingSummary: turn.updatedSummary, currentQuestionNumber: { increment: 1 }, currentQuestion: turn.nextQuestion, currentDifficulty: turn.nextQuestion.difficulty },
+          ? { status: 'COMPLETED', endedAt: new Date(), currentQuestion: null, rollingSummary: turn.updatedSummary, overallSummary: final.overallSummary, strengths: final.strengths, weaknesses: final.weaknesses, hireRecommendation: final.hireRecommendation, hireReason: final.hireReason, learningRoadmap: final.learningRoadmap, answerClaimToken: null, answerClaimedAt: null, revision: { increment: 1 } }
+          : { rollingSummary: turn.updatedSummary, currentQuestionNumber: { increment: 1 }, currentQuestion: turn.nextQuestion, currentDifficulty: turn.nextQuestion.difficulty, answerClaimToken: null, answerClaimedAt: null, revision: { increment: 1 } },
       });
+      if (sessionUpdate.count !== 1) throw new AppError('Interview session changed while this answer was being processed.', 409);
+      const updated = await tx.interviewSession.findUnique({ where: { id: sessionId } });
+      await performanceService.recordAnswer(userId, session.interviewType, turn.analytics, tx);
       return [saved, updated];
     });
-    await performanceService.recordAnswer(userId, session.interviewType, turn.analytics);
+    claim = null;
+    await performanceService.invalidateLeaderboard();
     const responseFinal = isFinal ? serialize({ ...updated, answers: [...session.answers, savedAnswer] }) : null;
     return { answer: savedAnswer, betterAnswer: turn.betterAnswer, analytics: turn.analytics, nextQuestion: updated.currentQuestion, interviewEnded: isFinal, status: updated.status, questionNumber: session.currentQuestionNumber, questionLimit: session.questionLimit, finalEvaluation: responseFinal };
+  } catch (error) {
+    if (claim) await releaseAnswerClaim(sessionId, claim.token).catch(() => undefined);
+    throw error;
   } finally { processing.delete(sessionId); }
 }
 async function pause(userId, sessionId) {
   const session = await owned(userId, sessionId, true);
   if (session.status === 'ACTIVE') {
-    return serialize(
-      await prisma.interviewSession.update({
-        where: { id: sessionId },
-        data: { status: 'PAUSED' },
-        include: { answers: { orderBy: { questionNumber: 'asc' } } },
-      }),
-      true
-    );
+    const result = await prisma.interviewSession.updateMany({ where: { id: sessionId, userId, status: 'ACTIVE', revision: session.revision || 0, answerClaimToken: null }, data: { status: 'PAUSED', revision: { increment: 1 } } });
+    if (result.count !== 1) throw new AppError('Interview state changed or an answer is being processed.', 409);
+    return serialize(await owned(userId, sessionId, true), true);
   }
   return serialize(session, true);
 }
@@ -111,14 +143,9 @@ async function resume(userId, sessionId) {
   if (session.status !== 'PAUSED') {
     throw new AppError('Only paused interviews can be continued.', 409);
   }
-  return serialize(
-    await prisma.interviewSession.update({
-      where: { id: sessionId },
-      data: { status: 'ACTIVE' },
-      include: { answers: { orderBy: { questionNumber: 'asc' } } },
-    }),
-    true
-  );
+  const result = await prisma.interviewSession.updateMany({ where: { id: sessionId, userId, status: 'PAUSED', revision: session.revision || 0, answerClaimToken: null }, data: { status: 'ACTIVE', revision: { increment: 1 } } });
+  if (result.count !== 1) throw new AppError('Interview state changed. Please refresh and try again.', 409);
+  return serialize(await owned(userId, sessionId, true), true);
 }
 
 async function getSessionById(userId, id) { return serialize(await owned(userId, id, true), true); }
@@ -126,4 +153,3 @@ async function getSessionsForUser(userId) { const rows = await prisma.interviewS
 async function getHistory(userId) { return getSessionsForUser(userId); }
 async function deleteSession(userId, id) { await owned(userId, id); await prisma.interviewSession.delete({ where: { id } }); return { sessionId: id, deleted: true }; }
 module.exports = { startInterview, startResumeInterview, submitAnswer, pause, resume, getSessionById, getSessionDetails: getSessionById, getSessionsForUser, getHistory, deleteSession };
-

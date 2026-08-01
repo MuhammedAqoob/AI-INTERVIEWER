@@ -6,6 +6,7 @@ jest.mock('../../config/database', () => ({
     findUnique: jest.fn(),
     create: jest.fn(),
     update: jest.fn(),
+    updateMany: jest.fn(),
   },
   user: { findMany: jest.fn() },
 }));
@@ -32,7 +33,7 @@ describe('leaderboard cache invalidation', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     prisma.userPerformanceAggregate.findUnique.mockResolvedValue(blankAggregate());
-    prisma.userPerformanceAggregate.update.mockImplementation(({ data }) => Promise.resolve(data));
+    prisma.userPerformanceAggregate.updateMany.mockResolvedValue({ count: 1 });
     cache.delByPattern.mockResolvedValue(undefined);
   });
 
@@ -45,13 +46,28 @@ describe('leaderboard cache invalidation', () => {
   test('still persists the answer in PostgreSQL even when invalidation is a no-op', async () => {
     await recordAnswer(1, INTERVIEW_TYPES.HR, { communication: 80, leadership: 70, professionalism: 60, confidence: 50 });
 
-    expect(prisma.userPerformanceAggregate.update).toHaveBeenCalledTimes(1);
+    expect(prisma.userPerformanceAggregate.updateMany).toHaveBeenCalledTimes(1);
   });
 
   test('does not throw when Redis is unavailable during invalidation', async () => {
     cache.delByPattern.mockRejectedValue(new Error('ECONNREFUSED'));
 
     await expect(recordAnswer(1, INTERVIEW_TYPES.HR, { communication: 80, leadership: 70, professionalism: 60, confidence: 50 })).resolves.toBeDefined();
+  });
+
+  test('retries a revision conflict so a concurrent update is not lost', async () => {
+    prisma.userPerformanceAggregate.findUnique
+      .mockResolvedValueOnce({ ...blankAggregate(), revision: 0 })
+      .mockResolvedValueOnce({ ...blankAggregate(), revision: 1, coreSums: { communication: 70 }, coreCounts: { communication: 1 }, totalAnswers: 1 });
+    prisma.userPerformanceAggregate.updateMany
+      .mockResolvedValueOnce({ count: 0 })
+      .mockResolvedValueOnce({ count: 1 });
+
+    const result = await recordAnswer(1, INTERVIEW_TYPES.HR, { communication: 80 });
+
+    expect(prisma.userPerformanceAggregate.updateMany).toHaveBeenCalledTimes(2);
+    expect(prisma.userPerformanceAggregate.updateMany.mock.calls[1][0].data.coreSums.communication).toBe(150);
+    expect(result.totalAnswers).toBe(2);
   });
 });
 

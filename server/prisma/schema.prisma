@@ -27,6 +27,7 @@ model UserPerformanceAggregate {
   coreCounts       Json     @default("{}") @map("core_counts")
   resumeHighScores Json     @default("{}") @map("resume_high_scores")
   totalAnswers     Int      @default(0) @map("total_answers")
+  revision         Int      @default(0)
   updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz()
   user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -41,6 +42,9 @@ model InterviewSession {
   status                String   @default("ACTIVE") @db.VarChar(20)
   questionLimit         Int      @map("question_limit")
   currentQuestionNumber Int      @default(1) @map("current_question_number")
+  revision              Int      @default(0)
+  answerClaimToken      String?  @map("answer_claim_token") @db.VarChar(64)
+  answerClaimedAt       DateTime? @map("answer_claimed_at") @db.Timestamptz()
   currentQuestion       Json?    @map("current_question")
   currentDifficulty     String   @default("EASY") @map("current_difficulty") @db.VarChar(20)
   rollingSummary        String   @default("") @map("rolling_summary") @db.Text

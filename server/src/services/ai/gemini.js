@@ -46,19 +46,19 @@ function extractJsonFromResponse(text) {
   return cleaned;
 }
 
-async function callGemini(systemPrompt, userPrompt) {
+async function callGemini(systemPrompt, userPrompt, timeoutMs = TIMEOUT_MS) {
   const client = getClient();
-
-  const timeoutPromise = new Promise((_, reject) => {
-    setTimeout(() => reject(new Error('Gemini request timeout')), TIMEOUT_MS);
-  });
-
-  const apiPromise = client.generateContent({
-    contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
-    systemInstruction: { parts: [{ text: systemPrompt }] },
-  });
-
-  const result = await Promise.race([apiPromise, timeoutPromise]);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  let result;
+  try {
+    result = await client.generateContent({
+      contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+      systemInstruction: { parts: [{ text: systemPrompt }] },
+    }, { signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
   const response = await result.response;
   const text = response.text();
 
@@ -70,14 +70,14 @@ async function generateInterviewTurn(params) {
     ...params,
   });
 
-  const raw = await callGemini(prompts.systemPrompt, prompts.userPrompt);
+  const raw = await callGemini(prompts.systemPrompt, prompts.userPrompt, params._timeoutMs);
   const jsonStr = extractJsonFromResponse(raw);
   const parsed = JSON.parse(jsonStr);
 
   return normalizeInterviewResponse(parsed);
 }
 
-async function generateFirstQuestion({ branch, interviewType, difficulty, resumeSummary }) {
+async function generateFirstQuestion({ branch, interviewType, difficulty, resumeSummary, _timeoutMs }) {
   const prompts = promptBuilder.buildFirstQuestionPrompt({
     branch,
     interviewType,
@@ -85,7 +85,7 @@ async function generateFirstQuestion({ branch, interviewType, difficulty, resume
     resumeSummary,
   });
 
-  const raw = await callGemini(prompts.systemPrompt, prompts.userPrompt);
+  const raw = await callGemini(prompts.systemPrompt, prompts.userPrompt, _timeoutMs);
   const jsonStr = extractJsonFromResponse(raw);
   const parsed = JSON.parse(jsonStr);
 
@@ -95,8 +95,8 @@ async function generateFirstQuestion({ branch, interviewType, difficulty, resume
   };
 }
 
-async function generateStructuredResponse({ systemPrompt, userPrompt }) {
-  const raw = await callGemini(systemPrompt, userPrompt);
+async function generateStructuredResponse({ systemPrompt, userPrompt, _timeoutMs }) {
+  const raw = await callGemini(systemPrompt, userPrompt, _timeoutMs);
   const jsonStr = extractJsonFromResponse(raw);
   return JSON.parse(jsonStr);
 }

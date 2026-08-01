@@ -10,6 +10,7 @@ jest.mock('../../config/database', () => ({
     findUnique: jest.fn(),
     findMany: jest.fn(),
     update: jest.fn(),
+    updateMany: jest.fn(),
   },
   dailyInterviewUsage: { upsert: jest.fn() },
   $transaction: jest.fn(),
@@ -23,6 +24,7 @@ jest.mock('../ai', () => ({
 jest.mock('../performanceService', () => ({
   ensureAggregate: jest.fn(),
   recordAnswer: jest.fn(),
+  invalidateLeaderboard: jest.fn(),
 }));
 
 const turn = (nextQuestion) => ({
@@ -53,9 +55,11 @@ const session = (overrides = {}) => ({
 describe('interviewService.submitAnswer', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    prisma.interviewSession.findUnique.mockResolvedValue(session());
+    prisma.interviewSession.findUnique
+      .mockResolvedValueOnce(session())
+      .mockResolvedValue({ ...session(), currentQuestionNumber: 2, currentQuestion: { content: 'Question 2', difficulty: 'MEDIUM' }, currentDifficulty: 'MEDIUM' });
+    prisma.interviewSession.updateMany.mockResolvedValue({ count: 1 });
     prisma.interviewAnswer.create.mockImplementation(({ data }) => Promise.resolve({ id: 'a1', ...data }));
-    prisma.interviewSession.update.mockImplementation(({ data }) => Promise.resolve({ ...session(), ...data }));
     prisma.$transaction.mockImplementation((fn) => fn(prisma));
     ai.generateInterviewTurn.mockResolvedValue(turn({ content: 'Question 2', difficulty: 'MEDIUM' }));
     ai.generateFinalEvaluation.mockResolvedValue({
@@ -68,44 +72,44 @@ describe('interviewService.submitAnswer', () => {
     });
     performanceService.ensureAggregate.mockResolvedValue({});
     performanceService.recordAnswer.mockResolvedValue({});
+    performanceService.invalidateLeaderboard.mockResolvedValue(undefined);
   });
 
   test('saves the answer and advances the session for a non-final turn', async () => {
     const result = await submitAnswer(1, { sessionId: 's1', answer: 'My answer' });
 
     expect(prisma.interviewAnswer.create).toHaveBeenCalledTimes(1);
-    expect(prisma.interviewSession.update).toHaveBeenCalledTimes(1);
+    expect(prisma.interviewSession.updateMany).toHaveBeenCalledTimes(2);
     expect(result.interviewEnded).toBe(false);
     expect(result.nextQuestion).toEqual({ content: 'Question 2', difficulty: 'MEDIUM' });
     expect(ai.generateFinalEvaluation).not.toHaveBeenCalled();
   });
 
   test('marks the session COMPLETED with an evaluation on the final turn', async () => {
-    prisma.interviewSession.findUnique.mockResolvedValue(
-      session({ currentQuestionNumber: 2, currentQuestion: { content: 'Question 2', difficulty: 'MEDIUM' } })
-    );
+    const finalSession = session({ currentQuestionNumber: 2, currentQuestion: { content: 'Question 2', difficulty: 'MEDIUM' } });
+    prisma.interviewSession.findUnique.mockReset();
+    prisma.interviewSession.findUnique.mockResolvedValueOnce(finalSession).mockResolvedValueOnce({ ...finalSession, status: 'COMPLETED', currentQuestion: null });
 
     const result = await submitAnswer(1, { sessionId: 's1', answer: 'Final answer' });
 
     expect(ai.generateFinalEvaluation).toHaveBeenCalledTimes(1);
     expect(result.interviewEnded).toBe(true);
     expect(result.status).toBe('COMPLETED');
-    const updateCall = prisma.interviewSession.update.mock.calls[0][0];
+    const updateCall = prisma.interviewSession.updateMany.mock.calls[1][0];
     expect(updateCall.data.status).toBe('COMPLETED');
     expect(updateCall.data.overallSummary).toBe('Great');
     expect(result.finalEvaluation.overallAverage).toBeGreaterThan(0);
   });
 
   test('leaves the session ACTIVE and retryable when the AI fails on the final turn', async () => {
-    prisma.interviewSession.findUnique.mockResolvedValue(
-      session({ currentQuestionNumber: 2, currentQuestion: { content: 'Question 2', difficulty: 'MEDIUM' } })
-    );
+    prisma.interviewSession.findUnique.mockReset();
+    prisma.interviewSession.findUnique.mockResolvedValue(session({ currentQuestionNumber: 2, currentQuestion: { content: 'Question 2', difficulty: 'MEDIUM' } }));
     ai.generateFinalEvaluation.mockRejectedValue(new Error('provider down'));
 
     await expect(submitAnswer(1, { sessionId: 's1', answer: 'Final answer' })).rejects.toThrow('provider down');
     // No answer persisted and no session mutation: the candidate can retry.
     expect(prisma.interviewAnswer.create).not.toHaveBeenCalled();
-    expect(prisma.interviewSession.update).not.toHaveBeenCalled();
+    expect(prisma.interviewSession.updateMany).toHaveBeenCalledTimes(2); // claim then release
   });
 
   test('rejects a duplicate in-flight submission with 409', async () => {
@@ -114,7 +118,24 @@ describe('interviewService.submitAnswer', () => {
     await first;
   });
 
+  test('does not call AI when another process has already claimed the question', async () => {
+    prisma.interviewSession.updateMany.mockResolvedValueOnce({ count: 0 });
+    await expect(submitAnswer(1, { sessionId: 's1', answer: 'Duplicate' })).rejects.toMatchObject({ statusCode: 409 });
+    expect(ai.generateInterviewTurn).not.toHaveBeenCalled();
+    expect(prisma.interviewAnswer.create).not.toHaveBeenCalled();
+  });
+
+  test('returns a controlled conflict if the session version changes before commit', async () => {
+    prisma.interviewSession.updateMany
+      .mockResolvedValueOnce({ count: 1 }) // claim
+      .mockResolvedValueOnce({ count: 0 }) // transaction state transition
+      .mockResolvedValueOnce({ count: 1 }); // release
+    await expect(submitAnswer(1, { sessionId: 's1', answer: 'Race' })).rejects.toMatchObject({ statusCode: 409 });
+    expect(prisma.interviewAnswer.create).toHaveBeenCalledTimes(1);
+  });
+
   test('rejects answers for sessions that are not active', async () => {
+    prisma.interviewSession.findUnique.mockReset();
     prisma.interviewSession.findUnique.mockResolvedValue(session({ status: 'PAUSED' }));
 
     await expect(submitAnswer(1, { sessionId: 's1', answer: 'Answer' })).rejects.toMatchObject({ statusCode: 409 });

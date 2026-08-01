@@ -52,10 +52,7 @@ async function ensureAggregate(userId) {
   catch (error) { if (error.code === 'P2002') return prisma.userPerformanceAggregate.findUnique({ where: { userId } }); throw error; }
 }
 
-async function recordAnswer(userId, interviewType, analytics) {
-  const current = await prisma.userPerformanceAggregate.findUnique({ where: { userId } }) || await ensureAggregate(userId);
-  const next = applyAnswer(current, interviewType, analytics);
-  const result = await prisma.userPerformanceAggregate.update({ where: { userId }, data: next });
+async function invalidateLeaderboard() {
   // Invalidate all cached leaderboards (every page size) because the user's
   // performance has changed. Guarded so a Redis failure can never break the
   // answer-write path.
@@ -64,7 +61,29 @@ async function recordAnswer(userId, interviewType, analytics) {
   } catch (err) {
     if (process.env.NODE_ENV !== 'production') console.error('Failed to invalidate leaderboard cache:', err);
   }
-  return result;
+}
+
+// Compare-and-swap on the aggregate revision makes the read/calculate/write
+// sequence safe across requests and Node processes. The caller can pass an
+// existing Prisma transaction so the answer, session transition and aggregate
+// update commit or roll back together.
+async function recordAnswer(userId, interviewType, analytics, tx = null) {
+  const client = tx || prisma;
+  const maxAttempts = 8;
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const current = await client.userPerformanceAggregate.findUnique({ where: { userId } }) || await ensureAggregate(userId);
+    const next = applyAnswer(current, interviewType, analytics);
+    const updated = await client.userPerformanceAggregate.updateMany({
+      where: { userId, revision: current.revision || 0 },
+      data: { ...next, revision: { increment: 1 } },
+    });
+    if (updated.count === 1) {
+      const result = { ...current, ...next, revision: (current.revision || 0) + 1 };
+      if (!tx) await invalidateLeaderboard();
+      return result;
+    }
+  }
+  throw new Error('Performance aggregate changed too frequently. Please retry.');
 }
 
 async function backfillAll() {
@@ -72,4 +91,4 @@ async function backfillAll() {
   for (const user of users) await ensureAggregate(user.id);
 }
 
-module.exports = { ensureAggregate, recordAnswer, snapshot, backfillAll };
+module.exports = { ensureAggregate, recordAnswer, invalidateLeaderboard, snapshot, backfillAll };

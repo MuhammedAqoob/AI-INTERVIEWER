@@ -11,10 +11,10 @@ function extractJsonFromResponse(text) {
   return first >= 0 && last > first ? cleaned.slice(first, last + 1) : cleaned;
 }
 
-async function callZai(systemPrompt, userPrompt) {
+async function callZai(systemPrompt, userPrompt, timeoutMs = TIMEOUT_MS) {
   if (!process.env.ZAI_API_KEY) throw new Error('ZAI_API_KEY is not set');
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetch(API_URL, {
       method: 'POST',
@@ -30,17 +30,17 @@ async function callZai(systemPrompt, userPrompt) {
 
 async function generateInterviewTurn(params) {
   const prompts = promptBuilder.buildInterviewTurnPrompt(params);
-  return JSON.parse(extractJsonFromResponse(await callZai(prompts.systemPrompt, prompts.userPrompt)));
+  return JSON.parse(extractJsonFromResponse(await callZai(prompts.systemPrompt, prompts.userPrompt, params._timeoutMs)));
 }
 
 async function generateFirstQuestion(params) {
   const prompts = promptBuilder.buildFirstQuestionPrompt(params);
-  const parsed = JSON.parse(extractJsonFromResponse(await callZai(prompts.systemPrompt, prompts.userPrompt)));
+  const parsed = JSON.parse(extractJsonFromResponse(await callZai(prompts.systemPrompt, prompts.userPrompt, params._timeoutMs)));
   return { content: parsed.question || parsed.content || 'Can you tell me about yourself?', difficulty: parsed.difficulty || params.difficulty || 'EASY' };
 }
 
-async function generateStructuredResponse({ systemPrompt, userPrompt }) {
-  return JSON.parse(extractJsonFromResponse(await callZai(systemPrompt, userPrompt)));
+async function generateStructuredResponse({ systemPrompt, userPrompt, _timeoutMs }) {
+  return JSON.parse(extractJsonFromResponse(await callZai(systemPrompt, userPrompt, _timeoutMs)));
 }
 
 module.exports = { generateInterviewTurn, generateFirstQuestion, generateStructuredResponse };

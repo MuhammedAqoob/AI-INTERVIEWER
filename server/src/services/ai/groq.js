@@ -35,26 +35,26 @@ function extractJsonFromResponse(text) {
   return cleaned;
 }
 
-async function callGroq(systemPrompt, userPrompt) {
+async function callGroq(systemPrompt, userPrompt, timeoutMs = TIMEOUT_MS) {
   const groq = getClient();
-
-  const timeoutPromise = new Promise((_, reject) => {
-    setTimeout(() => reject(new Error('Groq request timeout')), TIMEOUT_MS);
-  });
-
-  const apiPromise = groq.chat.completions.create({
-    messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userPrompt },
-    ],
-    model: MODEL_NAME,
-    temperature: 0.7,
-    max_tokens: 2048,
-    top_p: 0.9,
-    response_format: { type: 'json_object' },
-  });
-
-  const result = await Promise.race([apiPromise, timeoutPromise]);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  let result;
+  try {
+    result = await groq.chat.completions.create({
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+      model: MODEL_NAME,
+      temperature: 0.7,
+      max_tokens: 2048,
+      top_p: 0.9,
+      response_format: { type: 'json_object' },
+    }, { signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
   const text = result.choices[0]?.message?.content || '';
 
   return text;
@@ -65,14 +65,14 @@ async function generateInterviewTurn(params) {
     ...params,
   });
 
-  const raw = await callGroq(prompts.systemPrompt, prompts.userPrompt);
+  const raw = await callGroq(prompts.systemPrompt, prompts.userPrompt, params._timeoutMs);
   const jsonStr = extractJsonFromResponse(raw);
   const parsed = JSON.parse(jsonStr);
 
   return normalizeInterviewResponse(parsed);
 }
 
-async function generateFirstQuestion({ branch, interviewType, difficulty, resumeSummary }) {
+async function generateFirstQuestion({ branch, interviewType, difficulty, resumeSummary, _timeoutMs }) {
   const prompts = promptBuilder.buildFirstQuestionPrompt({
     branch,
     interviewType,
@@ -80,7 +80,7 @@ async function generateFirstQuestion({ branch, interviewType, difficulty, resume
     resumeSummary,
   });
 
-  const raw = await callGroq(prompts.systemPrompt, prompts.userPrompt);
+  const raw = await callGroq(prompts.systemPrompt, prompts.userPrompt, _timeoutMs);
   const jsonStr = extractJsonFromResponse(raw);
   const parsed = JSON.parse(jsonStr);
 
@@ -90,8 +90,8 @@ async function generateFirstQuestion({ branch, interviewType, difficulty, resume
   };
 }
 
-async function generateStructuredResponse({ systemPrompt, userPrompt }) {
-  const raw = await callGroq(systemPrompt, userPrompt);
+async function generateStructuredResponse({ systemPrompt, userPrompt, _timeoutMs }) {
+  const raw = await callGroq(systemPrompt, userPrompt, _timeoutMs);
   const jsonStr = extractJsonFromResponse(raw);
   return JSON.parse(jsonStr);
 }
