@@ -23,7 +23,13 @@ async function callZai(systemPrompt, userPrompt, timeoutMs = TIMEOUT_MS) {
       body: JSON.stringify({ model: MODEL_NAME, messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }], temperature: 0.7, max_tokens: 2048, stream: false, thinking: { type: 'disabled' }, response_format: { type: 'json_object' } }),
     });
     const body = await response.json();
-    if (!response.ok) throw new Error(`Z.AI request failed (${response.status}): ${body?.message || body?.error?.message || 'Unknown error'}`);
+    if (!response.ok) {
+      // Preserve the provider status so the common execution policy can tell
+      // a retryable 429/5xx from a permanent credentials/request failure.
+      const error = new Error(`Z.AI request failed (${response.status}): ${body?.message || body?.error?.message || 'Unknown error'}`);
+      error.status = response.status;
+      throw error;
+    }
     return body.choices?.[0]?.message?.content || '';
   } finally { clearTimeout(timeout); }
 }

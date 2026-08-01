@@ -43,6 +43,12 @@ describe('AI execution policy', () => {
     expect(gemini.generateStructuredResponse).toHaveBeenCalledTimes(1);
   });
 
+  test('treats a provider error carrying HTTP 429 as retryable', async () => {
+    zai.generateStructuredResponse.mockRejectedValueOnce(transient(429)).mockRejectedValueOnce(transient(429));
+    await expect(ai.generateStructuredResponse({})).resolves.toEqual({ ok: 'gemini' });
+    expect(gemini.generateStructuredResponse).toHaveBeenCalledTimes(1);
+  });
+
   test('bounds concurrent calls to a provider and waits for a slot', async () => {
     process.env.AI_ZAI_CONCURRENCY = '1';
     let release;
@@ -65,6 +71,15 @@ describe('AI execution policy', () => {
     await expect(ai.generateStructuredResponse({})).resolves.toEqual({ ok: 'gemini' });
     await expect(ai.generateStructuredResponse({})).resolves.toEqual({ ok: 'gemini' });
     expect(zai.generateStructuredResponse).toHaveBeenCalledTimes(1);
+  });
+
+  test('falls back when a circuit opens between retry attempts', async () => {
+    process.env.AI_RETRY_COUNT = '1';
+    process.env.AI_CIRCUIT_FAILURE_THRESHOLD = '1';
+    zai.generateStructuredResponse.mockRejectedValue(transient());
+    await expect(ai.generateStructuredResponse({})).resolves.toEqual({ ok: 'gemini' });
+    expect(zai.generateStructuredResponse).toHaveBeenCalledTimes(1);
+    expect(gemini.generateStructuredResponse).toHaveBeenCalledTimes(1);
   });
 
   test('enforces one total operation deadline', async () => {

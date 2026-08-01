@@ -29,6 +29,7 @@ function stateFor(name) {
 function operationExpired(deadline) { return Date.now() >= deadline; }
 function remaining(deadline) { return Math.max(0, deadline - Date.now()); }
 function timeoutError() { const error = new Error('AI operation deadline exceeded'); error.code = 'AI_OPERATION_TIMEOUT'; return error; }
+function cooldownError(name) { const error = new Error(`${name} provider is cooling down`); error.code = 'AI_PROVIDER_COOLDOWN'; return error; }
 async function awaitWithinDeadline(promise, deadline) {
   const ms = remaining(deadline);
   if (!ms) throw timeoutError();
@@ -48,7 +49,7 @@ function isTransient(error) {
   const status = errorStatus(error);
   if ([408, 425, 429].includes(status) || (status >= 500 && status <= 599)) return true;
   const message = String(error?.message || '');
-  return error?.name === 'AbortError' || error?.code === 'AI_OPERATION_TIMEOUT'
+  return error?.name === 'AbortError' || error?.code === 'AI_OPERATION_TIMEOUT' || error?.code === 'AI_PROVIDER_COOLDOWN'
     || /timeout|timed out|ECONNRESET|ECONNREFUSED|ENOTFOUND|EAI_AGAIN|network|socket|fetch failed|concurrency limit reached/i.test(message);
 }
 function isMalformedResponse(error) {
@@ -127,7 +128,7 @@ async function sleepBackoff(attempt, deadline) {
 async function invokeProvider(name, method, params, deadline) {
   const provider = PROVIDERS[name];
   if (!provider) throw new AppError(`Unknown AI provider: ${name}`, 500);
-  if (!canUseProvider(name)) throw new Error(`${name} provider is cooling down`);
+  if (!canUseProvider(name)) throw cooldownError(name);
   await acquireSlot(name, deadline);
   try {
     if (operationExpired(deadline)) throw timeoutError();
@@ -154,6 +155,9 @@ async function execute(method, params, validate) {
       } catch (error) {
         lastError = error;
         if (isMalformedResponse(error) || isPermanent(error)) throw (isMalformedResponse(error) ? aiResponseInvalid(error) : liveAiUnavailable(error));
+        // A circuit can open between attempts. It is an instruction to skip
+        // this provider, not a user-facing provider failure.
+        if (error?.code === 'AI_PROVIDER_COOLDOWN') break;
         if (attempt < retryCount() && !operationExpired(deadline)) {
           log(`${providerName} transient failure; retrying (${attempt + 1}/${retryCount()})`);
           await sleepBackoff(attempt, deadline);
