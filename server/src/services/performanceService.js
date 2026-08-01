@@ -31,11 +31,12 @@ function snapshot(row) {
     const base = aggregate.coreCounts[key] ? aggregate.coreSums[key] / aggregate.coreCounts[key] : 0;
     return [key, round(base ? Math.max(base, aggregate.resumeHighScores[key]) : 0)];
   }));
+  const coveredKeys = CORE_METRICS.filter((key) => aggregate.coreCounts[key] > 0);
   const categoryScores = Object.fromEntries(CORE_TYPES.map((type) => {
-    const metrics = STRATEGIES[type].analytics;
-    return [type, round(metrics.reduce((sum, key) => sum + criterionScores[key], 0) / metrics.length)];
+    const coveredInType = STRATEGIES[type].analytics.filter((key) => aggregate.coreCounts[key] > 0);
+    return [type, coveredInType.length ? round(coveredInType.reduce((sum, key) => sum + criterionScores[key], 0) / coveredInType.length) : null];
   }));
-  return { criterionScores, categoryScores, criteriaCovered: CORE_METRICS.filter((key) => aggregate.coreCounts[key] > 0).length, averageScore: round(CORE_METRICS.reduce((sum, key) => sum + criterionScores[key], 0) / CORE_METRICS.length), totalAnswers: aggregate.totalAnswers };
+  return { criterionScores, categoryScores, criteriaCovered: coveredKeys.length, averageScore: coveredKeys.length ? round(coveredKeys.reduce((sum, key) => sum + criterionScores[key], 0) / coveredKeys.length) : 0, totalAnswers: aggregate.totalAnswers };
 }
 
 async function createFromExisting(userId) {

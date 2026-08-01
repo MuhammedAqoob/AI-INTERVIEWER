@@ -1,4 +1,4 @@
-const { recordAnswer } = require('../performanceService');
+const { recordAnswer, snapshot } = require('../performanceService');
 const { INTERVIEW_TYPES } = require('../../constants/interviewTypes');
 
 jest.mock('../../config/database', () => ({
@@ -52,5 +52,32 @@ describe('leaderboard cache invalidation', () => {
     cache.delByPattern.mockRejectedValue(new Error('ECONNREFUSED'));
 
     await expect(recordAnswer(1, INTERVIEW_TYPES.HR, { communication: 80, leadership: 70, professionalism: 60, confidence: 50 })).resolves.toBeDefined();
+  });
+});
+
+describe('performanceService.snapshot', () => {
+  test('averages only the covered metrics instead of dividing by all core metrics', () => {
+    const result = snapshot({
+      coreSums: { communication: 60.5, leadership: 60.5, professionalism: 60.5, confidence: 60.5 },
+      coreCounts: { communication: 1, leadership: 1, professionalism: 1, confidence: 1 },
+      resumeHighScores: {},
+      totalAnswers: 1,
+    });
+
+    expect(result.criteriaCovered).toBe(4);
+    expect(result.averageScore).toBeCloseTo(60.5);
+    expect(result.categoryScores.HR).toBeCloseTo(60.5);
+    expect(result.categoryScores.TECHNICAL).toBeNull();
+    expect(result.categoryScores.APTITUDE).toBeNull();
+  });
+
+  test('returns zero average and null categories when nothing is covered', () => {
+    const result = snapshot({ coreSums: {}, coreCounts: {}, resumeHighScores: {}, totalAnswers: 0 });
+
+    expect(result.criteriaCovered).toBe(0);
+    expect(result.averageScore).toBe(0);
+    expect(result.categoryScores.TECHNICAL).toBeNull();
+    expect(result.categoryScores.HR).toBeNull();
+    expect(result.categoryScores.APTITUDE).toBeNull();
   });
 });

@@ -96,14 +96,6 @@ const startResumeInterviewValidation = [
   handleValidationErrors,
 ];
 
-const validateSessionIdQuery = [
-  query('sessionId')
-    .optional()
-    .isUUID()
-    .withMessage('Session ID must be a valid UUID'),
-  handleValidationErrors,
-];
-
 const validateSessionIdParam = [
   param('sessionId')
     .notEmpty()
@@ -135,7 +127,6 @@ module.exports = {
   startInterviewValidation,
   startResumeInterviewValidation,
   answerValidation,
-  validateSessionIdQuery,
   validateSessionIdParam,
   historyValidation,
 };

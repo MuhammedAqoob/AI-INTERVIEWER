@@ -55,7 +55,6 @@ async function owned(userId, sessionId, includeAnswers = false) {
   return session;
 }
 function average(answers, type) { const keys = getStrategy(type).analytics; const totals = Object.fromEntries(keys.map((k) => [k, 0])); for (const answer of answers) for (const key of keys) totals[key] += Number(answer.analytics?.[key] || 0); return Object.fromEntries(keys.map((k) => [k, answers.length ? Math.round(totals[k] / answers.length) : 0])); }
-async function finish(session, answers) { const analytics = average(answers, session.interviewType); const final = await ai.generateFinalEvaluation({ interviewType: session.interviewType, rollingSummary: session.rollingSummary, analytics, questionCount: answers.length }); return prisma.interviewSession.update({ where: { id: session.id }, data: { status: 'COMPLETED', endedAt: new Date(), currentQuestion: null, overallSummary: final.overallSummary, strengths: final.strengths, weaknesses: final.weaknesses, hireRecommendation: final.hireRecommendation, hireReason: final.hireReason, learningRoadmap: final.learningRoadmap }, include: { answers: { orderBy: { questionNumber: 'asc' } } } }); }
 async function submitAnswer(userId, { sessionId, answer }) {
   if (processing.has(sessionId)) throw new AppError('Answer is already being processed.', 409);
   processing.add(sessionId);
@@ -122,19 +121,9 @@ async function resume(userId, sessionId) {
   );
 }
 
-async function endSession(userId, sessionId) {
-  const session = await owned(userId, sessionId, true);
-  if (session.status === 'COMPLETED') {
-    return serialize(session, true);
-  }
-  const answers = session.answers || [];
-  const updated = await finish(session, answers);
-  return serialize(updated, true);
-}
-
 async function getSessionById(userId, id) { return serialize(await owned(userId, id, true), true); }
 async function getSessionsForUser(userId) { const rows = await prisma.interviewSession.findMany({ where: { userId }, include: { answers: { select: { id: true, analytics: true } } }, orderBy: { updatedAt: 'desc' } }); return rows.map((s) => serialize(s)); }
 async function getHistory(userId) { return getSessionsForUser(userId); }
 async function deleteSession(userId, id) { await owned(userId, id); await prisma.interviewSession.delete({ where: { id } }); return { sessionId: id, deleted: true }; }
-module.exports = { startInterview, startResumeInterview, submitAnswer, pause, resume, endSession, getSessionById, getSessionDetails: getSessionById, getSessionsForUser, getHistory, deleteSession };
+module.exports = { startInterview, startResumeInterview, submitAnswer, pause, resume, getSessionById, getSessionDetails: getSessionById, getSessionsForUser, getHistory, deleteSession };
 

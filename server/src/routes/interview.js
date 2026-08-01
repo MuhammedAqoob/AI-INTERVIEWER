@@ -1,8 +1,6 @@
 const express = require('express');
 const {
   getOptions,
-  getSession,
-  getSessions,
   getHistory,
   getSessionDetails,
   start,
@@ -10,7 +8,6 @@ const {
   answer,
   pause,
   resume,
-  endSession,
   deleteSession,
 } = require('../controllers/interviewController');
 const { getLeaderboard } = require('../controllers/leaderboardController');
@@ -19,7 +16,6 @@ const {
   startInterviewValidation,
   startResumeInterviewValidation,
   answerValidation,
-  validateSessionIdQuery,
   validateSessionIdParam,
   historyValidation,
 } = require('../middleware/validate');
@@ -35,10 +31,6 @@ const { upload, handleMulterError } = require('../middleware/upload');
 const router = express.Router();
 
 router.get('/options', authenticate, getOptions);
-
-router.get('/status', authenticate, interviewStatusLimiter, validateSessionIdQuery, getSession);
-
-router.get('/sessions', authenticate, interviewStatusLimiter, getSessions);
 
 router.get('/history', authenticate, interviewStatusLimiter, historyValidation, getHistory);
 
@@ -56,7 +48,6 @@ router.get('/:sessionId', authenticate, interviewStatusLimiter, validateSessionI
 
 router.post('/:sessionId/pause', authenticate, interviewStatusLimiter, validateSessionIdParam, pause);
 router.post('/:sessionId/resume', authenticate, interviewStatusLimiter, validateSessionIdParam, resume);
-router.post('/:sessionId/end', authenticate, interviewStatusLimiter, validateSessionIdParam, endSession);
 
 router.post(
   '/start-resume',

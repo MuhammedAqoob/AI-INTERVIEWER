@@ -25,31 +25,6 @@ async function getOptions(req, res, next) {
   }
 }
 
-async function getSession(req, res, next) {
-  try {
-    const { sessionId } = req.query;
-
-    if (sessionId) {
-      const result = await interviewService.getSessionById(req.user.id, sessionId);
-      return res.status(200).json({ success: true, data: result });
-    }
-
-    const result = await interviewService.getSessionsForUser(req.user.id);
-    res.status(200).json({ success: true, data: result });
-  } catch (error) {
-    next(error);
-  }
-}
-
-async function getSessions(req, res, next) {
-  try {
-    const result = await interviewService.getSessionsForUser(req.user.id);
-    res.status(200).json({ success: true, data: result });
-  } catch (error) {
-    next(error);
-  }
-}
-
 async function getHistory(req, res, next) {
   try {
     const result = await interviewService.getHistory(req.user.id);
@@ -127,7 +102,6 @@ async function answer(req, res, next) {
 
 async function pause(req, res, next) { try { const result = await interviewService.pause(req.user.id, req.params.sessionId); res.status(200).json({ success: true, data: result }); } catch (error) { next(error); } }
 async function resume(req, res, next) { try { const result = await interviewService.resume(req.user.id, req.params.sessionId); res.status(200).json({ success: true, data: result }); } catch (error) { next(error); } }
-async function endSession(req, res, next) { try { const result = await interviewService.endSession(req.user.id, req.params.sessionId); res.status(200).json({ success: true, data: result }); } catch (error) { next(error); } }
 
 async function deleteSession(req, res, next) {
   try {
@@ -140,8 +114,6 @@ async function deleteSession(req, res, next) {
 
 module.exports = {
   getOptions,
-  getSession,
-  getSessions,
   getHistory,
   getSessionDetails,
   start,
@@ -149,6 +121,5 @@ module.exports = {
   answer,
   pause,
   resume,
-  endSession,
   deleteSession,
 };
