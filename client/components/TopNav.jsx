@@ -13,7 +13,7 @@ const NAV_LINKS = [
   { href: '/leaderboard', label: 'Leaderboard' },
 ];
 
-export default function TopNav({ username }) {
+export default function TopNav({ username, disableUserFetch = false }) {
   const pathname = usePathname();
   const router = useRouter();
   const { resolvedTheme, toggleTheme, mounted } = useTheme();
@@ -21,7 +21,7 @@ export default function TopNav({ username }) {
   const [fetchedUsername, setFetchedUsername] = useState(null);
 
   useEffect(() => {
-    if (!username) {
+    if (!disableUserFetch && !username) {
       auth.me()
         .then((res) => {
           if (res?.data?.user?.username) {
@@ -30,7 +30,7 @@ export default function TopNav({ username }) {
         })
         .catch(() => {});
     }
-  }, [username]);
+  }, [username, disableUserFetch]);
 
   const effectiveUsername = username || fetchedUsername;
 

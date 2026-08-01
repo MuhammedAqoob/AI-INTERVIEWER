@@ -13,15 +13,16 @@ import {
 import { useTheme } from './ThemeProvider';
 
 const LABELS = {
-  technicalKnowledge: 'Technical',
-  communication: 'Communication',
+  technology: 'Technology',
   problemSolving: 'Problem Solving',
-  confidence: 'Confidence',
-  grammar: 'Grammar',
+  criticalThinking: 'Critical Thinking',
+  communication: 'Communication',
   leadership: 'Leadership',
-  teamwork: 'Teamwork',
-  relevance: 'Relevance',
   professionalism: 'Professionalism',
+  confidence: 'Confidence',
+  logicalReasoning: 'Logical Reasoning',
+  accuracy: 'Accuracy',
+  speed: 'Speed',
 };
 
 const COLORS = [

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { dashboard } from '../../lib/api';
+import { dashboard, auth } from '../../lib/api';
 import TopNav from '../../components/TopNav';
 import AnalyticsChart from '../../components/AnalyticsChart';
 import { Spinner, Button, Card } from '../../components/ui';
@@ -23,7 +23,7 @@ export default function AnalyticsPage() {
     setLoading(true);
     setError('');
     try {
-      const meRes = await fetch('/api/auth/me', { credentials: 'include' }).then((r) => r.json());
+      const meRes = await auth.me().catch(() => null);
       if (!meRes?.data?.user) {
         router.push('/login');
         return;

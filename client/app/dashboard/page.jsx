@@ -25,7 +25,7 @@ export default function DashboardPage() {
         setStats(summary.data);
       })
       .catch((err) => {
-        if (/token|Access denied/i.test(err.message)) {
+        if (err?.status === 401) {
           router.push('/login');
         } else {
           setError(err.message);

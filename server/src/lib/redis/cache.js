@@ -69,4 +69,25 @@ async function del(key) {
   }
 }
 
-module.exports = { getJSON, setJSON, del };
+/**
+ * Delete all keys matching a glob pattern (e.g. 'leaderboard:global:*').
+ * Errors are logged (dev only) but never propagated.
+ * @param {string} pattern
+ */
+async function delByPattern(pattern) {
+  try {
+    const keys = [];
+    const stream = client.scanStream({ match: pattern, count: 100 });
+    for await (const batch of stream) {
+      if (batch.length) keys.push(...batch);
+    }
+    if (keys.length) await client.del(keys);
+  } catch (err) {
+    if (process.env.NODE_ENV !== 'production') {
+      console.error(`Redis DEL-by-pattern error for pattern ${pattern}:`, err);
+    }
+    // swallow error
+  }
+}
+
+module.exports = { getJSON, setJSON, del, delByPattern };

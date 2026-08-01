@@ -32,7 +32,11 @@ export default function SessionDetailsPage() {
       setData(res.data);
     } catch (err) {
       const msg = err.message || '';
-      if (msg.includes('404') || msg.includes('not found') || msg.includes('403') || msg.includes('Unauthorized')) {
+      if (err?.status === 401) {
+        router.push('/login');
+        return;
+      }
+      if (err?.status === 403 || err?.status === 404 || err?.status === 409) {
         router.push('/history');
         return;
       }

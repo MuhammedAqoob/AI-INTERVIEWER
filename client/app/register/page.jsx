@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Button, Input, Card, CardContent, CardFooter, Spinner } from '../../components/ui';
+import { auth } from '../../lib/api';
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -17,13 +18,9 @@ export default function RegisterPage() {
   const [checkingAuth, setCheckingAuth] = useState(true);
 
   useEffect(() => {
-    fetch('/api/auth/me', { credentials: 'include' })
-      .then((res) => {
-        if (res.ok) {
-      router.push('/');
-        } else {
-          setCheckingAuth(false);
-        }
+    auth.me()
+      .then(() => {
+        router.push('/');
       })
       .catch(() => {
         setCheckingAuth(false);
@@ -69,23 +66,7 @@ export default function RegisterPage() {
     }
 
     try {
-      const response = await fetch('/api/auth/register', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          username: formData.username,
-          password: formData.password,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || 'Registration failed');
-      }
-
+      await auth.register(formData.username, formData.password);
       router.push('/');
     } catch (err) {
       setError(err.message);

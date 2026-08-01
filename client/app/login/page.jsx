@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Button, Input, Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter, Spinner } from '../../components/ui';
+import { auth } from '../../lib/api';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -16,13 +17,9 @@ export default function LoginPage() {
   const [checkingAuth, setCheckingAuth] = useState(true);
 
   useEffect(() => {
-    fetch('/api/auth/me', { credentials: 'include' })
-      .then((res) => {
-        if (res.ok) {
-          router.push('/');
-        } else {
-          setCheckingAuth(false);
-        }
+    auth.me()
+      .then(() => {
+        router.push('/');
       })
       .catch(() => {
         setCheckingAuth(false);
@@ -43,20 +40,7 @@ export default function LoginPage() {
     setError('');
 
     try {
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(formData),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || 'Login failed');
-      }
-
+      await auth.login(formData.username, formData.password);
       router.push('/');
     } catch (err) {
       setError(err.message);

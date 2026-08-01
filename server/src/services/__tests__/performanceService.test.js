@@ -14,6 +14,7 @@ jest.mock('../../lib/redis/cache', () => ({
   getJSON: jest.fn(),
   setJSON: jest.fn(),
   del: jest.fn(),
+  delByPattern: jest.fn(),
 }));
 
 const prisma = require('../../config/database');
@@ -32,13 +33,13 @@ describe('leaderboard cache invalidation', () => {
     jest.clearAllMocks();
     prisma.userPerformanceAggregate.findUnique.mockResolvedValue(blankAggregate());
     prisma.userPerformanceAggregate.update.mockImplementation(({ data }) => Promise.resolve(data));
-    cache.del.mockResolvedValue(undefined);
+    cache.delByPattern.mockResolvedValue(undefined);
   });
 
-  test('deletes leaderboard:global after a performance update', async () => {
+  test('deletes all leaderboard:* caches after a performance update', async () => {
     await recordAnswer(1, INTERVIEW_TYPES.HR, { communication: 80, leadership: 70, professionalism: 60, confidence: 50 });
 
-    expect(cache.del).toHaveBeenCalledWith('leaderboard:global');
+    expect(cache.delByPattern).toHaveBeenCalledWith('leaderboard:global:*');
   });
 
   test('still persists the answer in PostgreSQL even when invalidation is a no-op', async () => {
@@ -48,7 +49,7 @@ describe('leaderboard cache invalidation', () => {
   });
 
   test('does not throw when Redis is unavailable during invalidation', async () => {
-    cache.del.mockRejectedValue(new Error('ECONNREFUSED'));
+    cache.delByPattern.mockRejectedValue(new Error('ECONNREFUSED'));
 
     await expect(recordAnswer(1, INTERVIEW_TYPES.HR, { communication: 80, leadership: 70, professionalism: 60, confidence: 50 })).resolves.toBeDefined();
   });

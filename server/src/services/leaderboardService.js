@@ -10,7 +10,10 @@ async function getUserLeaderboardScore(userId) {
 }
 
 async function getLeaderboard(limit = 10) {
-  const CACHE_KEY = 'leaderboard:global';
+  // Cache each page size separately so the truncated top-10 result is never
+  // served as a "top 50". A performance update invalidates the whole
+  // 'leaderboard:global:*' family via delByPattern.
+  const CACHE_KEY = `leaderboard:global:${limit}`;
 
   // Try cache first – log only in development.
   const cached = await getJSON(CACHE_KEY);

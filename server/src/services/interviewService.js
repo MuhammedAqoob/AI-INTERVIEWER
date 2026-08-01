@@ -10,8 +10,23 @@ const processing = new Set();
 const DAY_LIMIT = 5;
 
 function today() { const d = new Date(); return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())); }
+function sessionMetrics(answers, interviewType) {
+  const keys = getStrategy(interviewType).analytics;
+  const values = [];
+  let samples = 0;
+  for (const answer of answers || []) {
+    const analytics = answer.analytics || {};
+    if (Object.keys(analytics).length > 0) samples += 1;
+    for (const key of keys) {
+      const value = Number(analytics[key]);
+      if (Number.isFinite(value)) values.push(value);
+    }
+  }
+  return { overallAverage: values.length ? Math.round(values.reduce((sum, v) => sum + v, 0) / values.length) : 0, turnCount: (answers || []).length, analyticsSamples: samples };
+}
 function serialize(session, includeAnswers = false) {
-  const base = { id: session.id, sessionId: session.id, interviewType: session.interviewType, branch: session.branch, status: session.status, questionLimit: session.questionLimit, currentQuestionNumber: session.currentQuestionNumber, currentQuestion: session.currentQuestion, difficulty: session.currentDifficulty, rollingSummary: session.rollingSummary, resumeSummary: session.resumeSummary, startedAt: session.startedAt, endedAt: session.endedAt, overallSummary: session.overallSummary, strengths: session.strengths || [], weaknesses: session.weaknesses || [], hireRecommendation: session.hireRecommendation, hireReason: session.hireReason, learningRoadmap: session.learningRoadmap || [], totalQuestions: session.answers?.length || 0 };
+  const metrics = sessionMetrics(session.answers, session.interviewType);
+  const base = { id: session.id, sessionId: session.id, interviewType: session.interviewType, branch: session.branch, status: session.status, questionLimit: session.questionLimit, currentQuestionNumber: session.currentQuestionNumber, currentQuestion: session.currentQuestion, difficulty: session.currentDifficulty, rollingSummary: session.rollingSummary, resumeSummary: session.resumeSummary, startedAt: session.startedAt, endedAt: session.endedAt, overallSummary: session.overallSummary, strengths: session.strengths || [], weaknesses: session.weaknesses || [], hireRecommendation: session.hireRecommendation, hireReason: session.hireReason, learningRoadmap: session.learningRoadmap || [], totalQuestions: session.answers?.length || 0, overallAverage: metrics.overallAverage, turnCount: metrics.turnCount, analyticsSamples: metrics.analyticsSamples };
   if (includeAnswers) base.answers = (session.answers || []).map((a) => ({ ...a, analytics: a.analytics || {} }));
   return base;
 }
@@ -40,22 +55,38 @@ async function owned(userId, sessionId, includeAnswers = false) {
   return session;
 }
 function average(answers, type) { const keys = getStrategy(type).analytics; const totals = Object.fromEntries(keys.map((k) => [k, 0])); for (const answer of answers) for (const key of keys) totals[key] += Number(answer.analytics?.[key] || 0); return Object.fromEntries(keys.map((k) => [k, answers.length ? Math.round(totals[k] / answers.length) : 0])); }
-async function finish(session, answers) { const analytics = average(answers, session.interviewType); const final = await ai.generateFinalEvaluation({ interviewType: session.interviewType, rollingSummary: session.rollingSummary, analytics, questionCount: answers.length }); return prisma.interviewSession.update({ where: { id: session.id }, data: { status: 'COMPLETED', endedAt: new Date(), currentQuestion: null, overallSummary: final.overallSummary, strengths: final.strengths, weaknesses: final.weaknesses, hireRecommendation: final.hireRecommendation, hireReason: final.hireReason, learningRoadmap: final.learningRoadmap } }); }
+async function finish(session, answers) { const analytics = average(answers, session.interviewType); const final = await ai.generateFinalEvaluation({ interviewType: session.interviewType, rollingSummary: session.rollingSummary, analytics, questionCount: answers.length }); return prisma.interviewSession.update({ where: { id: session.id }, data: { status: 'COMPLETED', endedAt: new Date(), currentQuestion: null, overallSummary: final.overallSummary, strengths: final.strengths, weaknesses: final.weaknesses, hireRecommendation: final.hireRecommendation, hireReason: final.hireReason, learningRoadmap: final.learningRoadmap }, include: { answers: { orderBy: { questionNumber: 'asc' } } } }); }
 async function submitAnswer(userId, { sessionId, answer }) {
-  if (processing.has(sessionId)) throw new AppError('Answer is already being processed.', 409); processing.add(sessionId);
+  if (processing.has(sessionId)) throw new AppError('Answer is already being processed.', 409);
+  processing.add(sessionId);
   try {
     const session = await owned(userId, sessionId, true);
     if (session.status !== 'ACTIVE' || !session.currentQuestion) throw new AppError('This interview is not active.', 409);
     const turn = await ai.generateInterviewTurn({ interviewType: session.interviewType, branch: session.branch, questionNumber: session.currentQuestionNumber, questionLimit: session.questionLimit, difficulty: session.currentDifficulty, rollingSummary: session.rollingSummary, currentQuestion: session.currentQuestion.content, candidateAnswer: answer });
+    const isFinal = session.currentQuestionNumber >= session.questionLimit;
+    // Generate the final evaluation BEFORE mutating the session. If the AI
+    // provider fails, the session stays ACTIVE with its current question
+    // intact so the candidate can simply retry instead of being stuck.
+    const allAnswers = [...session.answers, { analytics: turn.analytics }];
+    const final = isFinal
+      ? await ai.generateFinalEvaluation({ interviewType: session.interviewType, rollingSummary: turn.updatedSummary, analytics: average(allAnswers, session.interviewType), questionCount: allAnswers.length })
+      : null;
     // Create the immutable user-level score snapshot before the new answer is
     // saved, then add this answer once. Deleting a session never subtracts it.
     await performanceService.ensureAggregate(userId);
-    const savedAnswer = await prisma.interviewAnswer.create({ data: { sessionId, questionNumber: session.currentQuestionNumber, question: session.currentQuestion.content, userAnswer: answer, betterAnswer: turn.betterAnswer, difficulty: session.currentDifficulty, analytics: turn.analytics } });
+    const [savedAnswer, updated] = await prisma.$transaction(async (tx) => {
+      const saved = await tx.interviewAnswer.create({ data: { sessionId, questionNumber: session.currentQuestionNumber, question: session.currentQuestion.content, userAnswer: answer, betterAnswer: turn.betterAnswer, difficulty: session.currentDifficulty, analytics: turn.analytics } });
+      const updated = await tx.interviewSession.update({
+        where: { id: sessionId },
+        data: isFinal
+          ? { status: 'COMPLETED', endedAt: new Date(), currentQuestion: null, rollingSummary: turn.updatedSummary, overallSummary: final.overallSummary, strengths: final.strengths, weaknesses: final.weaknesses, hireRecommendation: final.hireRecommendation, hireReason: final.hireReason, learningRoadmap: final.learningRoadmap }
+          : { rollingSummary: turn.updatedSummary, currentQuestionNumber: { increment: 1 }, currentQuestion: turn.nextQuestion, currentDifficulty: turn.nextQuestion.difficulty },
+      });
+      return [saved, updated];
+    });
     await performanceService.recordAnswer(userId, session.interviewType, turn.analytics);
-    const isFinal = session.currentQuestionNumber >= session.questionLimit;
-    let updated = await prisma.interviewSession.update({ where: { id: sessionId }, data: { rollingSummary: turn.updatedSummary, currentQuestionNumber: { increment: 1 }, currentQuestion: isFinal ? null : turn.nextQuestion, currentDifficulty: isFinal ? session.currentDifficulty : turn.nextQuestion.difficulty } });
-    if (isFinal) updated = await finish({ ...updated, rollingSummary: turn.updatedSummary }, [...session.answers, savedAnswer]);
-    return { answer: savedAnswer, betterAnswer: turn.betterAnswer, analytics: turn.analytics, nextQuestion: updated.currentQuestion, interviewEnded: isFinal, status: updated.status, questionNumber: session.currentQuestionNumber, questionLimit: session.questionLimit, finalEvaluation: isFinal ? serialize(updated) : null };
+    const responseFinal = isFinal ? serialize({ ...updated, answers: [...session.answers, savedAnswer] }) : null;
+    return { answer: savedAnswer, betterAnswer: turn.betterAnswer, analytics: turn.analytics, nextQuestion: updated.currentQuestion, interviewEnded: isFinal, status: updated.status, questionNumber: session.currentQuestionNumber, questionLimit: session.questionLimit, finalEvaluation: responseFinal };
   } finally { processing.delete(sessionId); }
 }
 async function pause(userId, sessionId) {
@@ -65,6 +96,7 @@ async function pause(userId, sessionId) {
       await prisma.interviewSession.update({
         where: { id: sessionId },
         data: { status: 'PAUSED' },
+        include: { answers: { orderBy: { questionNumber: 'asc' } } },
       }),
       true
     );
@@ -84,6 +116,7 @@ async function resume(userId, sessionId) {
     await prisma.interviewSession.update({
       where: { id: sessionId },
       data: { status: 'ACTIVE' },
+      include: { answers: { orderBy: { questionNumber: 'asc' } } },
     }),
     true
   );
@@ -100,7 +133,7 @@ async function endSession(userId, sessionId) {
 }
 
 async function getSessionById(userId, id) { return serialize(await owned(userId, id, true), true); }
-async function getSessionsForUser(userId) { const rows = await prisma.interviewSession.findMany({ where: { userId }, include: { answers: { select: { id: true } } }, orderBy: { updatedAt: 'desc' } }); return rows.map((s) => serialize(s)); }
+async function getSessionsForUser(userId) { const rows = await prisma.interviewSession.findMany({ where: { userId }, include: { answers: { select: { id: true, analytics: true } } }, orderBy: { updatedAt: 'desc' } }); return rows.map((s) => serialize(s)); }
 async function getHistory(userId) { return getSessionsForUser(userId); }
 async function deleteSession(userId, id) { await owned(userId, id); await prisma.interviewSession.delete({ where: { id } }); return { sessionId: id, deleted: true }; }
 module.exports = { startInterview, startResumeInterview, submitAnswer, pause, resume, endSession, getSessionById, getSessionDetails: getSessionById, getSessionsForUser, getHistory, deleteSession };

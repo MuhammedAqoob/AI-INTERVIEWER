@@ -1,5 +1,13 @@
 const API_BASE = '/api';
 
+export class ApiError extends Error {
+  constructor(message, status = 0) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+  }
+}
+
 async function request(endpoint, options = {}) {
   const url = `${API_BASE}${endpoint}`;
   const config = {
@@ -12,7 +20,7 @@ async function request(endpoint, options = {}) {
   const data = await response.json();
 
   if (!response.ok) {
-    throw new Error(data.message || 'Request failed');
+    throw new ApiError(data.message || 'Request failed', response.status);
   }
 
   return data;
@@ -38,16 +46,10 @@ export const auth = {
 
 export const dashboard = {
   summary: () => request('/dashboard/summary'),
-  sessions: () => request('/interview/sessions'),
 };
 
 export const interview = {
   options: () => request('/interview/options'),
-
-  status: (sessionId) => {
-    const params = sessionId ? `?sessionId=${sessionId}` : '';
-    return request(`/interview/status${params}`);
-  },
 
   details: (sessionId) => request(`/interview/${sessionId}`),
 
@@ -71,7 +73,7 @@ export const interview = {
     }).then(async (response) => {
       const data = await response.json();
       if (!response.ok) {
-        throw new Error(data.message || 'Request failed');
+        throw new ApiError(data.message || 'Request failed', response.status);
       }
       return data;
     });
@@ -84,9 +86,6 @@ export const interview = {
     }),
   pause: (sessionId) => request(`/interview/${sessionId}/pause`, { method: 'POST' }),
   resume: (sessionId) => request(`/interview/${sessionId}/resume`, { method: 'POST' }),
-  end: (sessionId) => request(`/interview/${sessionId}/end`, { method: 'POST' }),
-
-  sessions: () => request('/interview/sessions'),
 
   delete: (sessionId) =>
     request(`/interview/${sessionId}`, {

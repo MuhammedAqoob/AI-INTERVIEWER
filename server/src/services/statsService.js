@@ -9,16 +9,13 @@ function groupedAnalytics(score) {
   return Object.fromEntries(CORE_TYPES.map((type) => [type, Object.fromEntries(STRATEGIES[type].analytics.map((key) => [key, score.criterionScores[key]]))]));
 }
 
-async function analyticsByType(userId) {
-  return groupedAnalytics(performanceService.snapshot(await performanceService.ensureAggregate(userId)));
-}
-
 async function getDashboardSummary(userId) {
   const [sessions, usage, aggregate] = await Promise.all([prisma.interviewSession.findMany({ where: { userId }, select: { id: true, interviewType: true, status: true, updatedAt: true } }), prisma.dailyInterviewUsage.findUnique({ where: { userId_date: { userId, date: dateToday() } } }), performanceService.ensureAggregate(userId)]);
   const counts = { technical: 0, hr: 0, aptitude: 0, resume: 0 }; for (const s of sessions) { if (s.interviewType === INTERVIEW_TYPES.TECHNICAL) counts.technical++; if (s.interviewType === INTERVIEW_TYPES.HR) counts.hr++; if (s.interviewType === INTERVIEW_TYPES.APTITUDE) counts.aptitude++; if (s.interviewType === INTERVIEW_TYPES.RESUME) counts.resume++; }
   const paused = sessions.filter((s) => s.status === 'PAUSED').sort((a, b) => b.updatedAt - a.updatedAt)[0]; const recent = [...sessions].sort((a, b) => b.updatedAt - a.updatedAt)[0];
   const score = performanceService.snapshot(aggregate);
+  const leaderboardEligibleSessions = sessions.filter((s) => s.status === 'COMPLETED').length;
   // Analytics are persistent user performance, not a view of deletable sessions.
-  return { interviewsStartedToday: usage?.interviewsStarted || 0, interviewsRemainingToday: Math.max(0, 5 - (usage?.interviewsStarted || 0)), totalSessions: sessions.length, completedInterviews: sessions.filter((s) => s.status === 'COMPLETED').length, interviewCounts: counts, recentSessionId: recent?.id || null, continueSessionId: paused?.id || null, analytics: groupedAnalytics(score), overallPerformance: score.averageScore, criteriaCovered: score.criteriaCovered };
+  return { interviewsStartedToday: usage?.interviewsStarted || 0, interviewsRemainingToday: Math.max(0, 5 - (usage?.interviewsStarted || 0)), totalSessions: sessions.length, completedInterviews: sessions.filter((s) => s.status === 'COMPLETED').length, leaderboardEligibleSessions, interviewCounts: counts, recentSessionId: recent?.id || null, continueSessionId: paused?.id || null, analytics: groupedAnalytics(score), overallPerformance: score.averageScore, criteriaCovered: score.criteriaCovered };
 }
-module.exports = { getDashboardSummary, analyticsByType };
+module.exports = { getDashboardSummary };

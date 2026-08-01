@@ -4,17 +4,14 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import TopNav from '../components/TopNav';
 import { Button, Card } from '../components/ui';
+import { auth } from '../lib/api';
 
 export default function Home() {
   const router = useRouter();
   const [user, setUser] = useState(null);
 
   useEffect(() => {
-    fetch('/api/auth/me', { credentials: 'include' })
-      .then((res) => {
-        if (res.ok) return res.json();
-        return null;
-      })
+    auth.me()
       .then((data) => {
         if (data?.data?.user) {
           setUser(data.data.user);
@@ -35,7 +32,7 @@ export default function Home() {
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors flex flex-col justify-between">
       <div>
         {/* Glass Navigation Bar */}
-        <TopNav username={user?.username} />
+        <TopNav username={user?.username} disableUserFetch />
 
         {/* Hero Section */}
         <section className="max-w-5xl mx-auto py-16 sm:py-24 px-4 sm:px-6 text-center space-y-8">

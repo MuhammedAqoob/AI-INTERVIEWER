@@ -23,7 +23,8 @@ export default function InterviewRoomPage() {
       }
       setData(res.data);
     } catch (err) {
-      if (/not found|Unauthorized|403|404/i.test(err.message || '')) router.push('/history');
+      if (err?.status === 401) router.push('/login');
+      else if (err?.status === 403 || err?.status === 404) router.push('/history');
       else setError(err.message || 'Could not continue this interview. Please try again.');
     }
   };

@@ -1,9 +1,10 @@
-const { getJSON, setJSON, del } = require('../cache');
+const { getJSON, setJSON, del, delByPattern } = require('../cache');
 
 jest.mock('../client', () => ({
   get: jest.fn(),
   set: jest.fn(),
   del: jest.fn(),
+  scanStream: jest.fn(),
 }));
 
 const client = require('../client');
@@ -75,6 +76,30 @@ describe('redis cache', () => {
       client.del.mockRejectedValue(new Error('ECONNREFUSED'));
 
       await expect(del('leaderboard:global')).resolves.toBeUndefined();
+    });
+  });
+
+  describe('delByPattern', () => {
+    test('deletes every key matching the pattern', async () => {
+      client.scanStream.mockReturnValue([['leaderboard:global:10'], ['leaderboard:global:50'], []]);
+      client.del.mockResolvedValue(2);
+
+      await expect(delByPattern('leaderboard:global:*')).resolves.toBeUndefined();
+      expect(client.del).toHaveBeenCalledWith(['leaderboard:global:10', 'leaderboard:global:50']);
+    });
+
+    test('does nothing when no keys match', async () => {
+      client.scanStream.mockReturnValue([[]]);
+
+      await expect(delByPattern('leaderboard:global:*')).resolves.toBeUndefined();
+      expect(client.del).not.toHaveBeenCalled();
+    });
+
+    test('redis unavailable: swallows the error instead of throwing', async () => {
+      client.scanStream.mockReturnValue([['leaderboard:global:10']]);
+      client.del.mockRejectedValue(new Error('ECONNREFUSED'));
+
+      await expect(delByPattern('leaderboard:global:*')).resolves.toBeUndefined();
     });
   });
 });
