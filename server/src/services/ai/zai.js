@@ -2,7 +2,7 @@ const promptBuilder = require('../promptBuilder');
 
 const API_URL = 'https://api.z.ai/api/paas/v4/chat/completions';
 const MODEL_NAME = process.env.ZAI_MODEL || 'glm-4.7-flash';
-const TIMEOUT_MS = parseInt(process.env.AI_REQUEST_TIMEOUT, 10) || 30000;
+const TIMEOUT_MS = parseInt(process.env.AI_REQUEST_TIMEOUT, 10) || 15000;
 
 function extractJsonFromResponse(text) {
   const cleaned = String(text || '').trim().replace(/^```json\s*|\s*```$/g, '');

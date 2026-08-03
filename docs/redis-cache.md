@@ -38,12 +38,14 @@ Development-only logging prints `CACHE HIT leaderboard:global` /
 
 ## Cache invalidation flow
 
-When a user's performance changes (`performanceService.recordAnswer`), the cache
-is **not** updated. Instead the key is deleted:
+When a user's performance changes (`performanceService.recordSession` — invoked
+only when an interview is COMPLETED, i.e. on the final turn or via the
+force-complete button), the cache is **not** updated. Instead the key is
+deleted:
 
 ```
-recordAnswer → UPDATE userPerformanceAggregate (PostgreSQL)
-             → DEL leaderboard:global (Redis)
+recordSession → UPDATE userPerformanceAggregate (PostgreSQL)
+              → DEL leaderboard:global (Redis)
 ```
 
 The next `GET /leaderboard` misses, rebuilds from PostgreSQL, and re-populates

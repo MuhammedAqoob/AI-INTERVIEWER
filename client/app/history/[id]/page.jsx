@@ -126,6 +126,12 @@ export default function SessionDetailsPage() {
             <Meta label="Answered" value={data.turnCount ?? data.totalQuestions ?? 0} />
             <Meta label="Created" value={formatDate(data.createdAt || data.startedAt)} />
           </div>
+          {data.scoreContribution && (
+            <ContributionCard
+              current={data.scoreContribution.averageScore}
+              delta={data.scoreContribution.contribution}
+            />
+          )}
           <p className="text-xs text-slate-400 dark:text-slate-500 mt-4">
             Last updated {formatDateTime(data.updatedAt)}
           </p>
@@ -183,6 +189,33 @@ function Meta({ label, value }) {
     <div>
       <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">{label}</p>
       <p className="font-bold text-slate-900 dark:text-slate-100 mt-0.5">{value}</p>
+    </div>
+  );
+}
+
+function ContributionCard({ current, delta }) {
+  const isPositive = delta > 0;
+  const isNegative = delta < 0;
+  const tone = isPositive
+    ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 border-emerald-200 dark:border-emerald-800'
+    : isNegative
+      ? 'text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/60 border-rose-200 dark:border-rose-800'
+      : 'text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700';
+  const arrow = isPositive ? '↑' : isNegative ? '↓' : '=';
+  const label = isPositive ? 'Raised your score' : isNegative ? 'Lowered your score' : 'No change to your score';
+
+  return (
+    <div className={`mt-4 flex items-center justify-between gap-3 rounded-xl border px-4 py-3 ${tone}`}>
+      <div>
+        <p className="text-xs font-bold uppercase tracking-wider opacity-80">Leaderboard Contribution</p>
+        <p className="text-sm font-semibold mt-0.5">{label}</p>
+      </div>
+      <div className="text-right">
+        <p className="text-2xl font-black">
+          {arrow} {Math.abs(delta).toFixed(2)}
+        </p>
+        <p className="text-xs opacity-80 mt-0.5">Current overall: {current.toFixed(2)}</p>
+      </div>
     </div>
   );
 }

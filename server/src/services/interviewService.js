@@ -28,7 +28,7 @@ function sessionMetrics(answers, interviewType) {
 }
 function serialize(session, includeAnswers = false) {
   const metrics = sessionMetrics(session.answers, session.interviewType);
-  const base = { id: session.id, sessionId: session.id, interviewType: session.interviewType, branch: session.branch, status: session.status, questionLimit: session.questionLimit, currentQuestionNumber: session.currentQuestionNumber, currentQuestion: session.currentQuestion, difficulty: session.currentDifficulty, rollingSummary: session.rollingSummary, resumeSummary: session.resumeSummary, startedAt: session.startedAt, endedAt: session.endedAt, overallSummary: session.overallSummary, strengths: session.strengths || [], weaknesses: session.weaknesses || [], hireRecommendation: session.hireRecommendation, hireReason: session.hireReason, learningRoadmap: session.learningRoadmap || [], totalQuestions: session.answers?.length || 0, overallAverage: metrics.overallAverage, turnCount: metrics.turnCount, analyticsSamples: metrics.analyticsSamples };
+  const base = { id: session.id, sessionId: session.id, interviewType: session.interviewType, branch: session.branch, status: session.status, questionLimit: session.questionLimit, currentQuestionNumber: session.currentQuestionNumber, currentQuestion: session.currentQuestion, difficulty: session.currentDifficulty, rollingSummary: session.rollingSummary, resumeSummary: session.resumeSummary, startedAt: session.startedAt, endedAt: session.endedAt, totalQuestions: session.answers?.length || 0, overallAverage: metrics.overallAverage, turnCount: metrics.turnCount, analyticsSamples: metrics.analyticsSamples };
   if (includeAnswers) base.answers = (session.answers || []).map((a) => ({ ...a, analytics: a.analytics || {} }));
   return base;
 }
@@ -56,8 +56,6 @@ async function owned(userId, sessionId, includeAnswers = false) {
   if (session.userId !== userId) throw new AppError('Unauthorized access to interview session.', 403);
   return session;
 }
-function average(answers, type) { const keys = getStrategy(type).analytics; const totals = Object.fromEntries(keys.map((k) => [k, 0])); for (const answer of answers) for (const key of keys) totals[key] += Number(answer.analytics?.[key] || 0); return Object.fromEntries(keys.map((k) => [k, answers.length ? Math.round(totals[k] / answers.length) : 0])); }
-
 async function claimAnswer(userId, session) {
   const token = randomUUID();
   const staleBefore = new Date(Date.now() - answerClaimTtl());
@@ -96,24 +94,22 @@ async function submitAnswer(userId, { sessionId, answer }) {
     await performanceService.ensureAggregate(userId);
     const turn = await ai.generateInterviewTurn({ interviewType: session.interviewType, branch: session.branch, questionNumber: session.currentQuestionNumber, questionLimit: session.questionLimit, difficulty: session.currentDifficulty, rollingSummary: session.rollingSummary, currentQuestion: session.currentQuestion.content, candidateAnswer: answer });
     const isFinal = session.currentQuestionNumber >= session.questionLimit;
-    // Generate the final evaluation BEFORE mutating the session. If the AI
-    // provider fails, the session stays ACTIVE with its current question
-    // intact so the candidate can simply retry instead of being stuck.
-    const allAnswers = [...session.answers, { analytics: turn.analytics }];
-    const final = isFinal
-      ? await ai.generateFinalEvaluation({ interviewType: session.interviewType, rollingSummary: turn.updatedSummary, analytics: average(allAnswers, session.interviewType), questionCount: allAnswers.length })
-      : null;
     const [savedAnswer, updated] = await prisma.$transaction(async (tx) => {
       const saved = await tx.interviewAnswer.create({ data: { sessionId, questionNumber: session.currentQuestionNumber, question: session.currentQuestion.content, userAnswer: answer, betterAnswer: turn.betterAnswer, difficulty: session.currentDifficulty, analytics: turn.analytics } });
       const sessionUpdate = await tx.interviewSession.updateMany({
         where: { id: sessionId, userId, status: 'ACTIVE', currentQuestionNumber: session.currentQuestionNumber, revision: claim.revision, answerClaimToken: claim.token },
         data: isFinal
-          ? { status: 'COMPLETED', endedAt: new Date(), currentQuestion: null, rollingSummary: turn.updatedSummary, overallSummary: final.overallSummary, strengths: final.strengths, weaknesses: final.weaknesses, hireRecommendation: final.hireRecommendation, hireReason: final.hireReason, learningRoadmap: final.learningRoadmap, answerClaimToken: null, answerClaimedAt: null, revision: { increment: 1 } }
+          ? { status: 'COMPLETED', endedAt: new Date(), currentQuestion: null, rollingSummary: turn.updatedSummary, answerClaimToken: null, answerClaimedAt: null, revision: { increment: 1 } }
           : { rollingSummary: turn.updatedSummary, currentQuestionNumber: { increment: 1 }, currentQuestion: turn.nextQuestion, currentDifficulty: turn.nextQuestion.difficulty, answerClaimToken: null, answerClaimedAt: null, revision: { increment: 1 } },
       });
       if (sessionUpdate.count !== 1) throw new AppError('Interview session changed while this answer was being processed.', 409);
       const updated = await tx.interviewSession.findUnique({ where: { id: sessionId } });
-      await performanceService.recordAnswer(userId, session.interviewType, turn.analytics, tx);
+      if (isFinal) {
+        // The interview only counts toward the leaderboard once it is COMPLETED.
+        // All of the session's answers are applied as one per-criterion sample
+        // (the session average) in a single aggregate update.
+        await performanceService.recordSession(userId, session.interviewType, [...session.answers.map((a) => a.analytics), saved.analytics], tx);
+      }
       return [saved, updated];
     });
     claim = null;
@@ -156,23 +152,32 @@ async function endSession(userId, sessionId) {
   if (session.status !== 'ACTIVE' && session.status !== 'PAUSED') {
     throw new AppError('Only active or paused interviews can be completed.', 409);
   }
-  const answers = session.answers || [];
-  const final = await ai.generateFinalEvaluation({
-    interviewType: session.interviewType,
-    rollingSummary: session.rollingSummary,
-    analytics: average(answers, session.interviewType),
-    questionCount: answers.length,
+  const updated = await prisma.$transaction(async (tx) => {
+    const result = await tx.interviewSession.updateMany({
+      where: { id: sessionId, userId, status: { in: ['ACTIVE', 'PAUSED'] }, revision: session.revision || 0, answerClaimToken: null },
+      data: { status: 'COMPLETED', endedAt: new Date(), currentQuestion: null, revision: { increment: 1 } },
+    });
+    if (result.count !== 1) throw new AppError('Interview state changed or an answer is being processed.', 409);
+    const answers = session.answers || [];
+    if (answers.length) {
+      // A force-completed interview contributes its session average to the
+      // leaderboard exactly once, committed together with the status change.
+      await performanceService.recordSession(userId, session.interviewType, answers.map((a) => a.analytics), tx);
+    }
+    return tx.interviewSession.findUnique({ where: { id: sessionId } });
   });
-  const result = await prisma.interviewSession.updateMany({
-    where: { id: sessionId, userId, status: { in: ['ACTIVE', 'PAUSED'] }, revision: session.revision || 0, answerClaimToken: null },
-    data: { status: 'COMPLETED', endedAt: new Date(), currentQuestion: null, overallSummary: final.overallSummary, strengths: final.strengths, weaknesses: final.weaknesses, hireRecommendation: final.hireRecommendation, hireReason: final.hireReason, learningRoadmap: final.learningRoadmap, revision: { increment: 1 } },
-  });
-  if (result.count !== 1) throw new AppError('Interview state changed or an answer is being processed.', 409);
   await performanceService.invalidateLeaderboard();
-  return serialize(await owned(userId, sessionId, true), true);
+  return serialize({ ...updated, answers: session.answers || [] }, true);
 }
 
-async function getSessionById(userId, id) { return serialize(await owned(userId, id, true), true); }
+async function getSessionById(userId, id) {
+  const session = await owned(userId, id, true);
+  const result = serialize(session, true);
+  if (session.status === 'COMPLETED') {
+    result.scoreContribution = await performanceService.sessionContribution(userId, id);
+  }
+  return result;
+}
 async function getSessionsForUser(userId) { const rows = await prisma.interviewSession.findMany({ where: { userId }, include: { answers: { select: { id: true, analytics: true } } }, orderBy: { updatedAt: 'desc' } }); return rows.map((s) => serialize(s)); }
 async function getHistory(userId) { return getSessionsForUser(userId); }
 async function deleteSession(userId, id) { await owned(userId, id); await prisma.interviewSession.delete({ where: { id } }); return { sessionId: id, deleted: true }; }

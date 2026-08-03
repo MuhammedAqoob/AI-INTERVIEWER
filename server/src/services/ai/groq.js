@@ -2,7 +2,7 @@ const Groq = require('groq-sdk');
 const promptBuilder = require('../promptBuilder');
 
 const MODEL_NAME = 'llama-3.3-70b-versatile';
-const TIMEOUT_MS = parseInt(process.env.AI_REQUEST_TIMEOUT, 10) || 30000;
+const TIMEOUT_MS = parseInt(process.env.AI_REQUEST_TIMEOUT, 10) || 15000;
 
 let client = null;
 

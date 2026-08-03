@@ -1,4 +1,4 @@
-const { recordAnswer, snapshot } = require('../performanceService');
+const { recordAnswer, recordSession, snapshot, sessionContribution } = require('../performanceService');
 const { INTERVIEW_TYPES } = require('../../constants/interviewTypes');
 
 jest.mock('../../config/database', () => ({
@@ -8,6 +8,8 @@ jest.mock('../../config/database', () => ({
     update: jest.fn(),
     updateMany: jest.fn(),
   },
+  interviewAnswer: { findMany: jest.fn() },
+  interviewSession: { findUnique: jest.fn() },
   user: { findMany: jest.fn() },
 }));
 
@@ -71,6 +73,46 @@ describe('leaderboard cache invalidation', () => {
   });
 });
 
+describe('performanceService.recordSession', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    prisma.userPerformanceAggregate.findUnique.mockResolvedValue(blankAggregate());
+    prisma.userPerformanceAggregate.updateMany.mockResolvedValue({ count: 1 });
+  });
+
+  test('contributes one sample per criterion using the session average', async () => {
+    const result = await recordSession(1, INTERVIEW_TYPES.HR, [
+      { communication: 60, leadership: 60, professionalism: 60, confidence: 60 },
+      { communication: 100, leadership: 100, professionalism: 100, confidence: 100 },
+    ]);
+
+    expect(result.coreSums.communication).toBe(80);
+    expect(result.coreCounts.communication).toBe(1);
+    expect(result.coreSums.technology).toBe(0);
+    expect(result.coreCounts.technology).toBe(0);
+    expect(result.totalAnswers).toBe(2);
+  });
+
+  test('records the highest demonstrated score for resume sessions', async () => {
+    const result = await recordSession(1, INTERVIEW_TYPES.RESUME, [
+      { communication: 40, technology: 30 },
+      { communication: 90, technology: 70 },
+    ]);
+
+    expect(result.resumeHighScores.communication).toBe(90);
+    expect(result.resumeHighScores.technology).toBe(70);
+    expect(result.coreCounts.communication).toBe(0);
+    expect(result.totalAnswers).toBe(2);
+  });
+
+  test('invalidates the leaderboard cache after a non-transactional update', async () => {
+    cache.delByPattern.mockResolvedValue(undefined);
+    await recordSession(1, INTERVIEW_TYPES.HR, [{ communication: 80 }]);
+
+    expect(cache.delByPattern).toHaveBeenCalledWith('leaderboard:global:*');
+  });
+});
+
 describe('performanceService.snapshot', () => {
   test('averages only the covered metrics instead of dividing by all core metrics', () => {
     const result = snapshot({
@@ -95,5 +137,67 @@ describe('performanceService.snapshot', () => {
     expect(result.categoryScores.TECHNICAL).toBeNull();
     expect(result.categoryScores.HR).toBeNull();
     expect(result.categoryScores.APTITUDE).toBeNull();
+  });
+});
+
+describe('performanceService.sessionContribution', () => {
+  const hrAnswers = (value) => [
+    { analytics: { communication: value, leadership: value, professionalism: value, confidence: value } },
+    { analytics: { communication: value, leadership: value, professionalism: value, confidence: value } },
+  ];
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    prisma.interviewAnswer.findMany.mockResolvedValue([]);
+  });
+
+  test('returns a positive contribution when the session raised the overall score', async () => {
+    prisma.userPerformanceAggregate.findUnique.mockResolvedValue({
+      coreSums: { communication: 150, leadership: 150, professionalism: 150, confidence: 150 },
+      coreCounts: { communication: 2, leadership: 2, professionalism: 2, confidence: 2 },
+      resumeHighScores: {},
+      totalAnswers: 2,
+    });
+    prisma.interviewSession.findUnique.mockResolvedValue({ interviewType: INTERVIEW_TYPES.HR, answers: hrAnswers(90) });
+
+    const result = await sessionContribution(1, 's2');
+
+    expect(result.contribution).toBeCloseTo(15);
+    expect(result.averageScore).toBeCloseTo(75);
+    expect(result.withoutSession).toBeCloseTo(60);
+    expect(result.contribution).toBeGreaterThan(0);
+  });
+
+  test('returns a negative contribution when the session dragged the score down', async () => {
+    prisma.userPerformanceAggregate.findUnique.mockResolvedValue({
+      coreSums: { communication: 100, leadership: 100, professionalism: 100, confidence: 100 },
+      coreCounts: { communication: 2, leadership: 2, professionalism: 2, confidence: 2 },
+      resumeHighScores: {},
+      totalAnswers: 2,
+    });
+    prisma.interviewSession.findUnique.mockResolvedValue({ interviewType: INTERVIEW_TYPES.HR, answers: hrAnswers(30) });
+
+    const result = await sessionContribution(1, 's2');
+
+    expect(result.contribution).toBeCloseTo(-20);
+    expect(result.averageScore).toBeCloseTo(50);
+    expect(result.withoutSession).toBeCloseTo(70);
+    expect(result.contribution).toBeLessThan(0);
+  });
+
+  test('zeroes the baseline when the session is the only contributor', async () => {
+    prisma.userPerformanceAggregate.findUnique.mockResolvedValue({
+      coreSums: { communication: 90, leadership: 90, professionalism: 90, confidence: 90 },
+      coreCounts: { communication: 1, leadership: 1, professionalism: 1, confidence: 1 },
+      resumeHighScores: {},
+      totalAnswers: 2,
+    });
+    prisma.interviewSession.findUnique.mockResolvedValue({ interviewType: INTERVIEW_TYPES.HR, answers: hrAnswers(90) });
+
+    const result = await sessionContribution(1, 's1');
+
+    expect(result.averageScore).toBeCloseTo(90);
+    expect(result.withoutSession).toBe(0);
+    expect(result.contribution).toBeCloseTo(90);
   });
 });

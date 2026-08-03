@@ -1,5 +1,7 @@
 const API_BASE = '/api';
 
+const REQUEST_TIMEOUT_MS = 30000;
+
 export class ApiError extends Error {
   constructor(message, status = 0) {
     super(message);
@@ -16,8 +18,26 @@ async function request(endpoint, options = {}) {
     ...options,
   };
 
-  const response = await fetch(url, config);
-  const data = await response.json();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  let response;
+  try {
+    response = await fetch(url, { ...config, signal: controller.signal });
+  } catch (error) {
+    if (error?.name === 'AbortError') {
+      throw new ApiError('Request timed out. The AI took too long to respond, please try again.', 408);
+    }
+    throw new ApiError(error?.message || 'Network error. Please try again.');
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  let data;
+  try {
+    data = await response.json();
+  } catch (error) {
+    throw new ApiError('Received an invalid response from the server. Please try again.', response.status || 502);
+  }
 
   if (!response.ok) {
     throw new ApiError(data.message || 'Request failed', response.status);
@@ -66,16 +86,31 @@ export const interview = {
     formData.append('resume', file);
     formData.append('questionLimit', questionLimit);
     const url = `${API_BASE}/interview/start-resume`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     return fetch(url, {
       method: 'POST',
       credentials: 'include',
+      signal: controller.signal,
       body: formData,
     }).then(async (response) => {
-      const data = await response.json();
+      clearTimeout(timeout);
+      let data;
+      try {
+        data = await response.json();
+      } catch (error) {
+        throw new ApiError('Received an invalid response from the server. Please try again.', response.status || 502);
+      }
       if (!response.ok) {
         throw new ApiError(data.message || 'Request failed', response.status);
       }
       return data;
+    }).catch((error) => {
+      clearTimeout(timeout);
+      if (error?.name === 'AbortError') {
+        throw new ApiError('Request timed out. The AI took too long to respond, please try again.', 408);
+      }
+      throw error;
     });
   },
 

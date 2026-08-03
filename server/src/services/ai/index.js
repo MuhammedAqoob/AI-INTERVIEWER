@@ -15,7 +15,7 @@ const numberSetting = (name, fallback) => {
 const log = (...args) => { if (process.env.NODE_ENV !== 'production') console.log('[AI]', ...args); };
 const primary = () => process.env.AI_PROVIDER || 'gemini';
 const providerSequence = () => [...new Set([primary(), 'gemini', 'groq', 'zai'])];
-const operationTimeout = () => numberSetting('AI_OPERATION_TIMEOUT_MS', 45000);
+const operationTimeout = () => numberSetting('AI_OPERATION_TIMEOUT_MS', 20000);
 const retryCount = () => numberSetting('AI_RETRY_COUNT', 1);
 const circuitThreshold = () => numberSetting('AI_CIRCUIT_FAILURE_THRESHOLD', 3);
 const circuitCooldown = () => numberSetting('AI_CIRCUIT_COOLDOWN_MS', 15000);
@@ -183,11 +183,6 @@ function validateTurn(type, data, isFinal) {
 
 async function generateInterviewTurn(params) { return execute('generateInterviewTurn', params, (result) => validateTurn(params.interviewType, result, params.questionNumber >= params.questionLimit)); }
 async function generateFirstQuestion(params) { return execute('generateFirstQuestion', params); }
-async function generateFinalEvaluation(params) {
-  const result = await execute('generateStructuredResponse', promptBuilder.buildFinalEvaluationPrompt(params));
-  if (!result || typeof result.overallSummary !== 'string' || !Array.isArray(result.strengths) || !Array.isArray(result.weaknesses)) throw new AppError('Invalid final evaluation response.', 502);
-  return result;
-}
 function resetProviderStateForTests() { providerState.clear(); }
 
-module.exports = { generateInterviewTurn, generateFirstQuestion, generateFinalEvaluation, generateStructuredResponse: (prompts) => execute('generateStructuredResponse', prompts), buildResumeSummaryPrompt: promptBuilder.buildResumeSummaryPrompt, __resetProviderStateForTests: resetProviderStateForTests, __isTransient: isTransient };
+module.exports = { generateInterviewTurn, generateFirstQuestion, generateStructuredResponse: (prompts) => execute('generateStructuredResponse', prompts), buildResumeSummaryPrompt: promptBuilder.buildResumeSummaryPrompt, __resetProviderStateForTests: resetProviderStateForTests, __isTransient: isTransient };
