@@ -1,4 +1,4 @@
-const { submitAnswer, getSessionsForUser } = require('../interviewService');
+const { submitAnswer, getSessionsForUser, endSession } = require('../interviewService');
 
 const prisma = require('../../config/database');
 const ai = require('../ai');
@@ -166,5 +166,75 @@ describe('interviewService.getSessionsForUser', () => {
     expect(rows[0].turnCount).toBe(2);
     expect(rows[0].analyticsSamples).toBe(2);
     expect(rows[0].overallAverage).toBeGreaterThan(0);
+  });
+});
+
+describe('interviewService.endSession', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    prisma.interviewSession.updateMany.mockResolvedValue({ count: 1 });
+    ai.generateFinalEvaluation.mockResolvedValue({
+      overallSummary: 'Early finish',
+      strengths: ['a'],
+      weaknesses: ['b'],
+      hireRecommendation: 'MAYBE',
+      hireReason: 'c',
+      learningRoadmap: ['d'],
+    });
+    performanceService.invalidateLeaderboard.mockResolvedValue(undefined);
+  });
+
+  test('completes an active session with a final evaluation from answered turns', async () => {
+    prisma.interviewSession.findUnique.mockReset();
+    prisma.interviewSession.findUnique.mockResolvedValueOnce(
+      session({
+        answers: [{ id: 'a1', analytics: { communication: 80, leadership: 70, professionalism: 60, confidence: 50 } }],
+      })
+    );
+    prisma.interviewSession.findUnique.mockResolvedValueOnce(session({ status: 'COMPLETED', currentQuestion: null }));
+
+    const result = await endSession(1, 's1');
+
+    expect(ai.generateFinalEvaluation).toHaveBeenCalledTimes(1);
+    expect(ai.generateFinalEvaluation).toHaveBeenCalledWith(
+      expect.objectContaining({ questionCount: 1 })
+    );
+    expect(prisma.interviewSession.updateMany).toHaveBeenCalledTimes(1);
+    const where = prisma.interviewSession.updateMany.mock.calls[0][0].where;
+    expect(where.id).toBe('s1');
+    expect(where.status.in).toEqual(['ACTIVE', 'PAUSED']);
+    const data = prisma.interviewSession.updateMany.mock.calls[0][0].data;
+    expect(data.status).toBe('COMPLETED');
+    expect(data.overallSummary).toBe('Early finish');
+    expect(result.status).toBe('COMPLETED');
+    expect(performanceService.invalidateLeaderboard).toHaveBeenCalledTimes(1);
+  });
+
+  test('returns the session unchanged when it is already COMPLETED', async () => {
+    prisma.interviewSession.findUnique.mockReset();
+    prisma.interviewSession.findUnique.mockResolvedValue(session({ status: 'COMPLETED' }));
+
+    const result = await endSession(1, 's1');
+
+    expect(ai.generateFinalEvaluation).not.toHaveBeenCalled();
+    expect(prisma.interviewSession.updateMany).not.toHaveBeenCalled();
+    expect(result.status).toBe('COMPLETED');
+  });
+
+  test('rejects when the session state changed or an answer is in flight', async () => {
+    prisma.interviewSession.findUnique.mockReset();
+    prisma.interviewSession.findUnique.mockResolvedValue(session());
+    prisma.interviewSession.updateMany.mockResolvedValue({ count: 0 });
+
+    await expect(endSession(1, 's1')).rejects.toMatchObject({ statusCode: 409 });
+    expect(ai.generateFinalEvaluation).toHaveBeenCalledTimes(1);
+  });
+
+  test('rejects sessions in a terminal state that is not COMPLETED', async () => {
+    prisma.interviewSession.findUnique.mockReset();
+    prisma.interviewSession.findUnique.mockResolvedValue(session({ status: 'ABANDONED' }));
+
+    await expect(endSession(1, 's1')).rejects.toMatchObject({ statusCode: 409 });
+    expect(ai.generateFinalEvaluation).not.toHaveBeenCalled();
   });
 });

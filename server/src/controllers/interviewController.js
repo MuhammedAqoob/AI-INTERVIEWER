@@ -102,6 +102,7 @@ async function answer(req, res, next) {
 
 async function pause(req, res, next) { try { const result = await interviewService.pause(req.user.id, req.params.sessionId); res.status(200).json({ success: true, data: result }); } catch (error) { next(error); } }
 async function resume(req, res, next) { try { const result = await interviewService.resume(req.user.id, req.params.sessionId); res.status(200).json({ success: true, data: result }); } catch (error) { next(error); } }
+async function endSession(req, res, next) { try { const result = await interviewService.endSession(req.user.id, req.params.sessionId); res.status(200).json({ success: true, data: result }); } catch (error) { next(error); } }
 
 async function deleteSession(req, res, next) {
   try {
@@ -121,5 +122,6 @@ module.exports = {
   answer,
   pause,
   resume,
+  endSession,
   deleteSession,
 };

@@ -48,6 +48,19 @@ export default function InterviewRoomPage() {
     }
   };
 
+  const handleCompleteAndLeave = async () => {
+    setActionLoading(true);
+    try {
+      const res = await interview.end(sessionId);
+      router.push(`/history/${res.data.sessionId || sessionId}`);
+    } catch (err) {
+      setError(err.message || 'Failed to complete session.');
+    } finally {
+      setActionLoading(false);
+      setShowLeaveModal(false);
+    }
+  };
+
   const submit = async () => {
     if (!answer.trim() || sending) return;
     setSending(true);
@@ -219,8 +232,8 @@ export default function InterviewRoomPage() {
       <Modal
         open={showLeaveModal}
         onClose={() => setShowLeaveModal(false)}
-        title="Pause & Leave Interview?"
-        description="Leaving will pause your active interview session. Your progress will be saved so you can resume anytime from your Dashboard."
+        title="Leave Interview?"
+        description="Pause to resume later, or complete now to generate your evaluation and finish the interview."
       >
         <div className="flex flex-col sm:flex-row gap-2 justify-end mt-6">
           <Button
@@ -232,12 +245,20 @@ export default function InterviewRoomPage() {
             Cancel
           </Button>
           <Button
-            variant="primary"
+            variant="secondary"
             size="sm"
             onClick={handlePauseAndLeave}
             loading={actionLoading}
           >
             Pause & Leave
+          </Button>
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={handleCompleteAndLeave}
+            loading={actionLoading}
+          >
+            Complete & Leave
           </Button>
         </div>
       </Modal>

@@ -8,6 +8,7 @@ const {
   answer,
   pause,
   resume,
+  endSession,
   deleteSession,
 } = require('../controllers/interviewController');
 const { getLeaderboard } = require('../controllers/leaderboardController');
@@ -48,6 +49,7 @@ router.get('/:sessionId', authenticate, interviewStatusLimiter, validateSessionI
 
 router.post('/:sessionId/pause', authenticate, interviewStatusLimiter, validateSessionIdParam, pause);
 router.post('/:sessionId/resume', authenticate, interviewStatusLimiter, validateSessionIdParam, resume);
+router.post('/:sessionId/end', authenticate, interviewStatusLimiter, validateSessionIdParam, endSession);
 
 router.post(
   '/start-resume',

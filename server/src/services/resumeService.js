@@ -1,4 +1,4 @@
-const pdfParse = require('pdf-parse');
+const { PDFParse } = require('pdf-parse');
 const Tesseract = require('tesseract.js');
 const aiProvider = require('./ai');
 const AppError = require('../utils/AppError');
@@ -16,8 +16,13 @@ function cleanText(text) {
 }
 
 async function extractFromPdf(buffer) {
-  const data = await pdfParse(buffer);
-  return cleanText(data.text || '');
+  const parser = new PDFParse({ data: buffer });
+  try {
+    const result = await parser.getText({ pageJoiner: '' });
+    return cleanText(result?.text || '');
+  } finally {
+    await parser.destroy();
+  }
 }
 
 async function extractFromImage(buffer) {

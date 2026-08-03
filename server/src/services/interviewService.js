@@ -148,8 +148,32 @@ async function resume(userId, sessionId) {
   return serialize(await owned(userId, sessionId, true), true);
 }
 
+async function endSession(userId, sessionId) {
+  const session = await owned(userId, sessionId, true);
+  if (session.status === 'COMPLETED') {
+    return serialize(session, true);
+  }
+  if (session.status !== 'ACTIVE' && session.status !== 'PAUSED') {
+    throw new AppError('Only active or paused interviews can be completed.', 409);
+  }
+  const answers = session.answers || [];
+  const final = await ai.generateFinalEvaluation({
+    interviewType: session.interviewType,
+    rollingSummary: session.rollingSummary,
+    analytics: average(answers, session.interviewType),
+    questionCount: answers.length,
+  });
+  const result = await prisma.interviewSession.updateMany({
+    where: { id: sessionId, userId, status: { in: ['ACTIVE', 'PAUSED'] }, revision: session.revision || 0, answerClaimToken: null },
+    data: { status: 'COMPLETED', endedAt: new Date(), currentQuestion: null, overallSummary: final.overallSummary, strengths: final.strengths, weaknesses: final.weaknesses, hireRecommendation: final.hireRecommendation, hireReason: final.hireReason, learningRoadmap: final.learningRoadmap, revision: { increment: 1 } },
+  });
+  if (result.count !== 1) throw new AppError('Interview state changed or an answer is being processed.', 409);
+  await performanceService.invalidateLeaderboard();
+  return serialize(await owned(userId, sessionId, true), true);
+}
+
 async function getSessionById(userId, id) { return serialize(await owned(userId, id, true), true); }
 async function getSessionsForUser(userId) { const rows = await prisma.interviewSession.findMany({ where: { userId }, include: { answers: { select: { id: true, analytics: true } } }, orderBy: { updatedAt: 'desc' } }); return rows.map((s) => serialize(s)); }
 async function getHistory(userId) { return getSessionsForUser(userId); }
 async function deleteSession(userId, id) { await owned(userId, id); await prisma.interviewSession.delete({ where: { id } }); return { sessionId: id, deleted: true }; }
-module.exports = { startInterview, startResumeInterview, submitAnswer, pause, resume, getSessionById, getSessionDetails: getSessionById, getSessionsForUser, getHistory, deleteSession };
+module.exports = { startInterview, startResumeInterview, submitAnswer, pause, resume, endSession, getSessionById, getSessionDetails: getSessionById, getSessionsForUser, getHistory, deleteSession };
