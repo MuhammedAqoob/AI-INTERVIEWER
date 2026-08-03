@@ -2,7 +2,7 @@ const promptBuilder = require('../promptBuilder');
 
 const API_URL = 'https://api.z.ai/api/paas/v4/chat/completions';
 const MODEL_NAME = process.env.ZAI_MODEL || 'glm-4.7-flash';
-const TIMEOUT_MS = parseInt(process.env.AI_REQUEST_TIMEOUT, 10) || 15000;
+const TIMEOUT_MS = parseInt(process.env.AI_REQUEST_TIMEOUT, 10) || 12000;
 
 function extractJsonFromResponse(text) {
   const cleaned = String(text || '').trim().replace(/^```json\s*|\s*```$/g, '');
@@ -34,19 +34,24 @@ async function callZai(systemPrompt, userPrompt, timeoutMs = TIMEOUT_MS) {
   } finally { clearTimeout(timeout); }
 }
 
+function effectiveTimeoutMs(requestedTimeout) {
+  const requested = Number(requestedTimeout);
+  return Number.isFinite(requested) && requested > 0 ? Math.min(TIMEOUT_MS, requested) : TIMEOUT_MS;
+}
+
 async function generateInterviewTurn(params) {
   const prompts = promptBuilder.buildInterviewTurnPrompt(params);
-  return JSON.parse(extractJsonFromResponse(await callZai(prompts.systemPrompt, prompts.userPrompt, params._timeoutMs)));
+  return JSON.parse(extractJsonFromResponse(await callZai(prompts.systemPrompt, prompts.userPrompt, effectiveTimeoutMs(params._timeoutMs))));
 }
 
 async function generateFirstQuestion(params) {
   const prompts = promptBuilder.buildFirstQuestionPrompt(params);
-  const parsed = JSON.parse(extractJsonFromResponse(await callZai(prompts.systemPrompt, prompts.userPrompt, params._timeoutMs)));
+  const parsed = JSON.parse(extractJsonFromResponse(await callZai(prompts.systemPrompt, prompts.userPrompt, effectiveTimeoutMs(params._timeoutMs))));
   return { content: parsed.question || parsed.content || 'Can you tell me about yourself?', difficulty: parsed.difficulty || params.difficulty || 'EASY' };
 }
 
 async function generateStructuredResponse({ systemPrompt, userPrompt, _timeoutMs }) {
-  return JSON.parse(extractJsonFromResponse(await callZai(systemPrompt, userPrompt, _timeoutMs)));
+  return JSON.parse(extractJsonFromResponse(await callZai(systemPrompt, userPrompt, effectiveTimeoutMs(_timeoutMs))));
 }
 
 module.exports = { generateInterviewTurn, generateFirstQuestion, generateStructuredResponse };

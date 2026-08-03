@@ -2,7 +2,7 @@ const Groq = require('groq-sdk');
 const promptBuilder = require('../promptBuilder');
 
 const MODEL_NAME = 'llama-3.3-70b-versatile';
-const TIMEOUT_MS = parseInt(process.env.AI_REQUEST_TIMEOUT, 10) || 15000;
+const TIMEOUT_MS = parseInt(process.env.AI_REQUEST_TIMEOUT, 10) || 12000;
 
 let client = null;
 
@@ -60,12 +60,17 @@ async function callGroq(systemPrompt, userPrompt, timeoutMs = TIMEOUT_MS) {
   return text;
 }
 
+function effectiveTimeoutMs(requestedTimeout) {
+  const requested = Number(requestedTimeout);
+  return Number.isFinite(requested) && requested > 0 ? Math.min(TIMEOUT_MS, requested) : TIMEOUT_MS;
+}
+
 async function generateInterviewTurn(params) {
   const prompts = promptBuilder.buildInterviewTurnPrompt({
     ...params,
   });
 
-  const raw = await callGroq(prompts.systemPrompt, prompts.userPrompt, params._timeoutMs);
+  const raw = await callGroq(prompts.systemPrompt, prompts.userPrompt, effectiveTimeoutMs(params._timeoutMs));
   const jsonStr = extractJsonFromResponse(raw);
   const parsed = JSON.parse(jsonStr);
 
@@ -80,7 +85,7 @@ async function generateFirstQuestion({ branch, interviewType, difficulty, resume
     resumeSummary,
   });
 
-  const raw = await callGroq(prompts.systemPrompt, prompts.userPrompt, _timeoutMs);
+  const raw = await callGroq(prompts.systemPrompt, prompts.userPrompt, effectiveTimeoutMs(_timeoutMs));
   const jsonStr = extractJsonFromResponse(raw);
   const parsed = JSON.parse(jsonStr);
 
@@ -91,7 +96,7 @@ async function generateFirstQuestion({ branch, interviewType, difficulty, resume
 }
 
 async function generateStructuredResponse({ systemPrompt, userPrompt, _timeoutMs }) {
-  const raw = await callGroq(systemPrompt, userPrompt, _timeoutMs);
+  const raw = await callGroq(systemPrompt, userPrompt, effectiveTimeoutMs(_timeoutMs));
   const jsonStr = extractJsonFromResponse(raw);
   return JSON.parse(jsonStr);
 }

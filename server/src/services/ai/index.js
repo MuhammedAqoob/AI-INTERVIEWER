@@ -1,11 +1,13 @@
-const geminiProvider = require('./gemini');
+const cohereProvider = require('./cohere');
 const groqProvider = require('./groq');
 const zaiProvider = require('./zai');
 const promptBuilder = require('../promptBuilder');
 const { normalizeAnalytics } = require('../interviewStrategy');
 const AppError = require('../../utils/AppError');
 
-const PROVIDERS = { gemini: geminiProvider, groq: groqProvider, zai: zaiProvider };
+const PROVIDERS = { cohere: cohereProvider, groq: groqProvider, zai: zaiProvider };
+const DEFAULT_PRIORITY = ['cohere', 'groq', 'zai'];
+let priority = [...DEFAULT_PRIORITY];
 const providerState = new Map();
 
 const numberSetting = (name, fallback) => {
@@ -13,160 +15,92 @@ const numberSetting = (name, fallback) => {
   return Number.isFinite(value) && value >= 0 ? value : fallback;
 };
 const log = (...args) => { if (process.env.NODE_ENV !== 'production') console.log('[AI]', ...args); };
-const primary = () => process.env.AI_PROVIDER || 'gemini';
-const providerSequence = () => [...new Set([primary(), 'gemini', 'groq', 'zai'])];
-const operationTimeout = () => numberSetting('AI_OPERATION_TIMEOUT_MS', 20000);
-const retryCount = () => numberSetting('AI_RETRY_COUNT', 1);
-const circuitThreshold = () => numberSetting('AI_CIRCUIT_FAILURE_THRESHOLD', 3);
+const operationTimeout = () => numberSetting('AI_OPERATION_TIMEOUT_MS', 30000);
+const requestTimeout = () => numberSetting('AI_REQUEST_TIMEOUT', 12000);
 const circuitCooldown = () => numberSetting('AI_CIRCUIT_COOLDOWN_MS', 15000);
-const slotWait = () => numberSetting('AI_PROVIDER_SLOT_WAIT_MS', 1500);
 const providerLimit = (name) => numberSetting(`AI_${name.toUpperCase()}_CONCURRENCY`, 4);
 
 function stateFor(name) {
-  if (!providerState.has(name)) providerState.set(name, { active: 0, failures: 0, openUntil: 0, waiters: [] });
+  if (!providerState.has(name)) providerState.set(name, { active: 0, failures: 0, openUntil: 0 });
   return providerState.get(name);
 }
-function operationExpired(deadline) { return Date.now() >= deadline; }
 function remaining(deadline) { return Math.max(0, deadline - Date.now()); }
+function operationExpired(deadline) { return remaining(deadline) <= 0; }
 function timeoutError() { const error = new Error('AI operation deadline exceeded'); error.code = 'AI_OPERATION_TIMEOUT'; return error; }
-function cooldownError(name) { const error = new Error(`${name} provider is cooling down`); error.code = 'AI_PROVIDER_COOLDOWN'; return error; }
-async function awaitWithinDeadline(promise, deadline) {
-  const ms = remaining(deadline);
-  if (!ms) throw timeoutError();
-  let timer;
-  try {
-    return await Promise.race([
-      promise,
-      new Promise((_, reject) => { timer = setTimeout(() => reject(timeoutError()), ms); }),
-    ]);
-  } finally { clearTimeout(timer); }
-}
+function saturatedError(name) { const error = new Error(`${name} concurrency limit reached`); error.code = 'AI_PROVIDER_SATURATED'; return error; }
 
-function errorStatus(error) {
-  return Number(error?.status || error?.statusCode || error?.response?.status || error?.error?.status);
+function moveToFront(name) {
+  priority = [name, ...priority.filter((provider) => provider !== name)];
 }
-function isTransient(error) {
-  const status = errorStatus(error);
-  if ([408, 425, 429].includes(status) || (status >= 500 && status <= 599)) return true;
-  const message = String(error?.message || '');
-  return error?.name === 'AbortError' || error?.code === 'AI_OPERATION_TIMEOUT' || error?.code === 'AI_PROVIDER_COOLDOWN'
-    || /timeout|timed out|ECONNRESET|ECONNREFUSED|ENOTFOUND|EAI_AGAIN|network|socket|fetch failed|concurrency limit reached/i.test(message);
-}
-function isMalformedResponse(error) {
-  return error instanceof SyntaxError || /JSON|Invalid next question|Missing AI turn fields|Invalid analytics/i.test(error?.message || '');
-}
-function isPermanent(error) { return !isTransient(error) && !isMalformedResponse(error); }
-
-function liveAiUnavailable(error) {
-  const reason = error?.message ? ` Diagnostic: ${error.message}` : '';
-  log('operation failed:', error?.message || 'unknown error');
-  const message = process.env.NODE_ENV === 'development'
-    ? `Live AI is unavailable. Check your internet connection and AI provider configuration, then try again.${reason}`
-    : 'Live AI is unavailable. Please try again later.';
-  return new AppError(message, 503);
-}
-function aiResponseInvalid(error) {
-  const reason = error?.message ? ` Diagnostic: ${error.message}` : '';
-  log('malformed response:', error?.message || 'unknown error');
-  const message = process.env.NODE_ENV === 'development'
-    ? `Live AI returned malformed JSON. Please submit the answer again.${reason}`
-    : 'Live AI returned an invalid response. Please submit the answer again.';
-  return new AppError(message, 502);
-}
-
-function releaseSlot(name) {
-  const state = stateFor(name);
-  state.active = Math.max(0, state.active - 1);
-  const next = state.waiters.shift();
-  if (next) next();
-}
-async function acquireSlot(name, deadline) {
-  const state = stateFor(name);
-  if (state.active < providerLimit(name)) { state.active += 1; return; }
-  log(`${name} concurrency saturated (${state.active}/${providerLimit(name)})`);
-  const waitMs = Math.min(slotWait(), remaining(deadline));
-  if (!waitMs) throw timeoutError();
-  await new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      const index = state.waiters.indexOf(onSlot);
-      if (index >= 0) state.waiters.splice(index, 1);
-      reject(new Error(`${name} concurrency limit reached`));
-    }, waitMs);
-    const onSlot = () => { clearTimeout(timer); state.active += 1; resolve(); };
-    state.waiters.push(onSlot);
-  });
+function moveToBack(name) {
+  priority = [...priority.filter((provider) => provider !== name), name];
 }
 function canUseProvider(name) {
   const state = stateFor(name);
   if (state.openUntil > Date.now()) return false;
-  if (state.openUntil) { state.openUntil = 0; log(`${name} circuit closed after cooldown`); }
+  if (state.openUntil) {
+    state.openUntil = 0;
+    state.failures = 0;
+    log(`${name} recovered and is eligible again`);
+  }
   return true;
 }
 function recordSuccess(name) {
   const state = stateFor(name);
   state.failures = 0;
   state.openUntil = 0;
+  moveToFront(name);
+  log(`${name} is current primary`);
 }
 function recordFailure(name, error) {
-  if (!isTransient(error)) return;
   const state = stateFor(name);
   state.failures += 1;
-  if (state.failures >= circuitThreshold()) {
-    state.openUntil = Date.now() + circuitCooldown();
-    log(`${name} circuit opened for ${circuitCooldown()}ms after ${state.failures} transient failures`);
-  }
+  state.openUntil = Date.now() + circuitCooldown();
+  moveToBack(name);
+  log(`${name} failed and was locked for ${circuitCooldown()}ms; priority is now ${priority.join(' -> ')}`, error?.message || 'unknown error');
 }
-async function sleepBackoff(attempt, deadline) {
-  const base = numberSetting('AI_RETRY_BASE_DELAY_MS', 150);
-  const max = numberSetting('AI_RETRY_MAX_DELAY_MS', 1000);
-  const jitter = Math.floor(Math.random() * Math.max(1, base));
-  const delay = Math.min(max, base * (2 ** attempt) + jitter, remaining(deadline));
-  if (!delay) throw timeoutError();
-  await new Promise((resolve) => setTimeout(resolve, delay));
+function liveAiUnavailable(error) {
+  const reason = error?.message ? ` Diagnostic: ${error.message}` : '';
+  log('operation failed:', error?.message || 'deadline reached');
+  const message = process.env.NODE_ENV === 'development'
+    ? `Live AI is unavailable. Check your internet connection and AI provider configuration, then try again.${reason}`
+    : 'Live AI is unavailable. Please try again later.';
+  return new AppError(message, 503);
+}
+
+function releaseSlot(name) { stateFor(name).active = Math.max(0, stateFor(name).active - 1); }
+function acquireSlot(name) {
+  const state = stateFor(name);
+  if (state.active >= providerLimit(name)) throw saturatedError(name);
+  state.active += 1;
+}
+async function awaitAttempt(promise, timeoutMs) {
+  let timer;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        timer = setTimeout(() => {
+          const error = new Error('AI provider attempt timed out');
+          error.status = 408;
+          error.code = 'AI_PROVIDER_TIMEOUT';
+          reject(error);
+        }, timeoutMs);
+      }),
+    ]);
+  } finally { clearTimeout(timer); }
 }
 
 async function invokeProvider(name, method, params, deadline) {
   const provider = PROVIDERS[name];
   if (!provider) throw new AppError(`Unknown AI provider: ${name}`, 500);
-  if (!canUseProvider(name)) throw cooldownError(name);
-  await acquireSlot(name, deadline);
+  const effectiveTimeout = Math.min(requestTimeout(), remaining(deadline));
+  if (effectiveTimeout <= 0) throw timeoutError();
+  acquireSlot(name);
   try {
-    if (operationExpired(deadline)) throw timeoutError();
-    log(`provider selected: ${name}`);
-    const result = await awaitWithinDeadline(provider[method]({ ...params, _timeoutMs: remaining(deadline) }), deadline);
-    recordSuccess(name);
-    return result;
-  } catch (error) {
-    recordFailure(name, error);
-    throw error;
+    log(`provider selected: ${name} (${effectiveTimeout}ms budget)`);
+    return await awaitAttempt(provider[method]({ ...params, _timeoutMs: effectiveTimeout }), effectiveTimeout);
   } finally { releaseSlot(name); }
-}
-
-async function execute(method, params, validate) {
-  const deadline = Date.now() + operationTimeout();
-  let lastError;
-  for (const providerName of providerSequence()) {
-    if (operationExpired(deadline)) break;
-    if (!canUseProvider(providerName)) { lastError = new Error(`${providerName} provider is cooling down`); continue; }
-    for (let attempt = 0; attempt <= retryCount(); attempt += 1) {
-      try {
-        const result = await invokeProvider(providerName, method, params, deadline);
-        return validate ? validate(result) : result;
-      } catch (error) {
-        lastError = error;
-        if (isMalformedResponse(error) || isPermanent(error)) throw (isMalformedResponse(error) ? aiResponseInvalid(error) : liveAiUnavailable(error));
-        // A circuit can open between attempts. It is an instruction to skip
-        // this provider, not a user-facing provider failure.
-        if (error?.code === 'AI_PROVIDER_COOLDOWN') break;
-        if (attempt < retryCount() && !operationExpired(deadline)) {
-          log(`${providerName} transient failure; retrying (${attempt + 1}/${retryCount()})`);
-          await sleepBackoff(attempt, deadline);
-        }
-      }
-    }
-    if (isTransient(lastError)) log(`${providerName} unavailable; falling back`);
-  }
-  throw (isMalformedResponse(lastError) ? aiResponseInvalid(lastError) : liveAiUnavailable(lastError || timeoutError()));
 }
 
 function validateTurn(type, data, isFinal) {
@@ -181,8 +115,48 @@ function validateTurn(type, data, isFinal) {
   return data;
 }
 
-async function generateInterviewTurn(params) { return execute('generateInterviewTurn', params, (result) => validateTurn(params.interviewType, result, params.questionNumber >= params.questionLimit)); }
-async function generateFirstQuestion(params) { return execute('generateFirstQuestion', params); }
-function resetProviderStateForTests() { providerState.clear(); }
+// One provider receives one immediate attempt. Any failed response—including
+// malformed data or configuration errors—locks and demotes that provider, then
+// the next currently healthy provider is selected without retry/backoff.
+async function execute(method, params, validate) {
+  const deadline = Date.now() + operationTimeout();
+  const attempted = new Set();
+  let lastError;
+  while (!operationExpired(deadline)) {
+    const providerName = priority.find((name) => !attempted.has(name) && canUseProvider(name));
+    if (!providerName) break;
+    attempted.add(providerName);
+    try {
+      const result = await invokeProvider(providerName, method, params, deadline);
+      const validated = validate ? validate(result) : result;
+      recordSuccess(providerName);
+      return validated;
+    } catch (error) {
+      lastError = error;
+      // Saturation is local scheduling pressure, not a provider health failure.
+      // Skip it for this operation and immediately try another provider.
+      if (error?.code === 'AI_PROVIDER_SATURATED') {
+        log(`${providerName} is saturated; trying another provider`);
+      } else {
+        recordFailure(providerName, error);
+      }
+    }
+  }
+  throw liveAiUnavailable(lastError || timeoutError());
+}
 
-module.exports = { generateInterviewTurn, generateFirstQuestion, generateStructuredResponse: (prompts) => execute('generateStructuredResponse', prompts), buildResumeSummaryPrompt: promptBuilder.buildResumeSummaryPrompt, __resetProviderStateForTests: resetProviderStateForTests, __isTransient: isTransient };
+async function generateInterviewTurn(params) {
+  return execute('generateInterviewTurn', params, (result) => validateTurn(params.interviewType, result, params.questionNumber >= params.questionLimit));
+}
+async function generateFirstQuestion(params) { return execute('generateFirstQuestion', params); }
+function resetProviderStateForTests() { priority = [...DEFAULT_PRIORITY]; providerState.clear(); }
+function getProviderPriorityForTests() { return [...priority]; }
+
+module.exports = {
+  generateInterviewTurn,
+  generateFirstQuestion,
+  generateStructuredResponse: (prompts) => execute('generateStructuredResponse', prompts),
+  buildResumeSummaryPrompt: promptBuilder.buildResumeSummaryPrompt,
+  __resetProviderStateForTests: resetProviderStateForTests,
+  __getProviderPriorityForTests: getProviderPriorityForTests,
+};
