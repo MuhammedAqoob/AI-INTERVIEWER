@@ -68,7 +68,7 @@ describe('leaderboard cache invalidation', () => {
     const result = await recordAnswer(1, INTERVIEW_TYPES.HR, { communication: 80 });
 
     expect(prisma.userPerformanceAggregate.updateMany).toHaveBeenCalledTimes(2);
-    expect(prisma.userPerformanceAggregate.updateMany.mock.calls[1][0].data.coreSums.communication).toBe(150);
+    expect(prisma.userPerformanceAggregate.updateMany.mock.calls[1][0].data.coreSums.communication).toBe(73.5);
     expect(result.totalAnswers).toBe(2);
   });
 });
@@ -91,6 +91,20 @@ describe('performanceService.recordSession', () => {
     expect(result.coreSums.technology).toBe(0);
     expect(result.coreCounts.technology).toBe(0);
     expect(result.totalAnswers).toBe(2);
+  });
+
+  test('uses EMA so recent completed sessions have stronger influence', async () => {
+    prisma.userPerformanceAggregate.findUnique
+      .mockResolvedValueOnce({ ...blankAggregate(), coreSums: { communication: 70 }, coreCounts: { communication: 1 } })
+      .mockResolvedValueOnce({ ...blankAggregate(), coreSums: { communication: 77 }, coreCounts: { communication: 1 } });
+
+    const afterNinety = await recordSession(1, INTERVIEW_TYPES.HR, [{ communication: 90 }]);
+    const afterNinetyFive = await recordSession(1, INTERVIEW_TYPES.HR, [{ communication: 95 }]);
+
+    expect(afterNinety.coreSums.communication).toBe(77);
+    expect(afterNinety.coreCounts.communication).toBe(1);
+    expect(afterNinetyFive.coreSums.communication).toBe(83.3);
+    expect(afterNinetyFive.coreCounts.communication).toBe(1);
   });
 
   test('records the highest demonstrated score for resume sessions', async () => {

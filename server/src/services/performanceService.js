@@ -6,6 +6,7 @@ const { delByPattern } = require('../lib/redis/cache');
 const blank = () => Object.fromEntries(CORE_METRICS.map((key) => [key, 0]));
 const number = (value) => Number.isFinite(Number(value)) ? Number(value) : 0;
 const round = (value) => Math.round(value * 100) / 100;
+const EMA_ALPHA = 0.35;
 
 function normalizeAggregate(row = {}) {
   return { coreSums: { ...blank(), ...(row.coreSums || {}) }, coreCounts: { ...blank(), ...(row.coreCounts || {}) }, resumeHighScores: { ...blank(), ...(row.resumeHighScores || {}) }, totalAnswers: row.totalAnswers || 0 };
@@ -19,10 +20,21 @@ function applyAnswer(state, interviewType, analytics) {
     return next;
   }
   for (const key of STRATEGIES[interviewType]?.analytics || []) {
-    next.coreSums[key] += number(analytics?.[key]);
-    next.coreCounts[key] += 1;
+    applyEmaMetric(next, key, number(analytics?.[key]));
   }
   return next;
+}
+
+// coreSums/coreCounts keep the existing database shape. Once a metric has a
+// value, coreSums stores its EMA and coreCounts stays at one as its coverage
+// marker, so snapshot() continues to calculate the score the same way.
+function applyEmaMetric(aggregate, key, sessionMetric) {
+  const count = number(aggregate.coreCounts[key]);
+  const previousMetric = count > 0 ? number(aggregate.coreSums[key]) / count : null;
+  aggregate.coreSums[key] = previousMetric === null
+    ? sessionMetric
+    : round((EMA_ALPHA * sessionMetric) + ((1 - EMA_ALPHA) * previousMetric));
+  aggregate.coreCounts[key] = 1;
 }
 
 function sessionAverages(analyticsList, keys) {
@@ -39,10 +51,10 @@ function sessionAverages(analyticsList, keys) {
   return Object.fromEntries(keys.filter((key) => counts[key]).map((key) => [key, round(sums[key] / counts[key])]));
 }
 
-// A completed interview contributes exactly one sample per criterion: each
-// criterion is averaged across the session's answers first, then added to the
-// running aggregate. Resume sessions record their highest demonstrated scores
-// instead of an average.
+// A completed interview contributes exactly one per-criterion session average.
+// Each new session metric updates the existing aggregate with EMA, giving the
+// latest completed interview a 35% weight. Resume sessions retain their
+// existing bonus/high-score behaviour.
 function applySession(state, interviewType, answers) {
   const next = normalizeAggregate(state);
   const analyticsList = (answers || []).map((answer) => answer?.analytics ?? answer).filter((a) => a && typeof a === 'object');
@@ -58,8 +70,7 @@ function applySession(state, interviewType, answers) {
   const averages = sessionAverages(analyticsList, keys);
   for (const key of keys) {
     if (averages[key] === undefined) continue;
-    next.coreSums[key] += averages[key];
-    next.coreCounts[key] += 1;
+    applyEmaMetric(next, key, averages[key]);
   }
   return next;
 }
@@ -67,11 +78,14 @@ function applySession(state, interviewType, answers) {
 // Builds an aggregate from stored answers by grouping them per session, so
 // each completed interview contributes a single per-criterion sample.
 function aggregateFromAnswers(answers) {
-  const groups = {};
+  const groups = new Map();
   for (const answer of answers || []) {
-    (groups[answer.sessionId] || (groups[answer.sessionId] = [])).push(answer);
+    if (!groups.has(answer.sessionId)) groups.set(answer.sessionId, []);
+    groups.get(answer.sessionId).push(answer);
   }
-  return Object.values(groups).reduce((state, rows) => applySession(state, rows[0].session.interviewType, rows), normalizeAggregate());
+  return [...groups.values()]
+    .sort((a, b) => new Date(a[0].session?.endedAt || a[0].createdAt || 0) - new Date(b[0].session?.endedAt || b[0].createdAt || 0))
+    .reduce((state, rows) => applySession(state, rows[0].session.interviewType, rows), normalizeAggregate());
 }
 
 function snapshot(row) {
@@ -89,7 +103,7 @@ function snapshot(row) {
 }
 
 async function createFromExisting(userId) {
-  const answers = await prisma.interviewAnswer.findMany({ where: { session: { userId, status: 'COMPLETED' } }, select: { sessionId: true, analytics: true, session: { select: { interviewType: true } } } });
+  const answers = await prisma.interviewAnswer.findMany({ where: { session: { userId, status: 'COMPLETED' } }, select: { sessionId: true, createdAt: true, analytics: true, session: { select: { interviewType: true, endedAt: true } } } });
   const aggregate = aggregateFromAnswers(answers);
   return prisma.userPerformanceAggregate.create({ data: { userId, ...aggregate } });
 }
