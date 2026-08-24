@@ -57,9 +57,11 @@ model InterviewSession {
   hireRecommendation    String?  @map("hire_recommendation") @db.VarChar(30)
   hireReason            String?  @map("hire_reason") @db.Text
   learningRoadmap       Json?    @default("[]") @map("learning_roadmap")
-  createdAt             DateTime @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt             DateTime @updatedAt @map("updated_at") @db.Timestamptz()
-  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  openingQuestionContent  String?            @map("opening_question_content") @db.Text
+  openingQuestionDifficulty String?          @map("opening_question_difficulty") @db.VarChar(20)
+  createdAt             DateTime           @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt             DateTime           @updatedAt @map("updated_at") @db.Timestamptz()
+  user                  User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   answers               InterviewAnswer[]
 
   @@index([userId, updatedAt])

@@ -92,13 +92,31 @@ export default function SessionDetailsPage() {
             </Button>
             <h1 className="text-lg font-bold text-slate-900 dark:text-slate-100">Session Details</h1>
           </div>
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={() => router.push(`/interview/${id}`)}
-          >
-            {data.status === 'PAUSED' ? 'Continue Interview' : 'View Room'}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => router.push(`/interview/${id}`)}
+            >
+              {data.status === 'PAUSED' ? 'Continue Interview' : 'View Room'}
+            </Button>
+            {data.status === 'COMPLETED' && data.interviewType !== 'RESUME' && (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={async () => {
+                  try {
+                    const res = await interview.retake(id);
+                    router.push(`/interview/${res.data.sessionId}`);
+                  } catch (err) {
+                    setError(err.message || 'Failed to start retake.');
+                  }
+                }}
+              >
+                Retake Interview
+              </Button>
+            )}
+          </div>
         </div>
       </header>
 

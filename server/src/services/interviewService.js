@@ -2,7 +2,7 @@ const prisma = require('../config/database');
 const questionProvider = require('./questionProvider');
 const ai = require('./ai');
 const performanceService = require('./performanceService');
-const { INTERVIEW_TYPES } = require('../constants/interviewTypes');
+const { INTERVIEW_TYPES, BRANCH_REQUIRED_TYPES } = require('../constants/interviewTypes');
 const { getStrategy } = require('./interviewStrategy');
 const AppError = require('../utils/AppError');
 const { randomUUID } = require('crypto');
@@ -37,19 +37,38 @@ async function claimDailyStart(userId) {
   const usage = await prisma.dailyInterviewUsage.upsert({ where: { userId_date: { userId, date } }, create: { userId, date, interviewsStarted: 1 }, update: { interviewsStarted: { increment: 1 } } });
   if (usage.interviewsStarted > DAY_LIMIT) { await prisma.dailyInterviewUsage.update({ where: { id: usage.id }, data: { interviewsStarted: { decrement: 1 } } }); throw new AppError('Daily interview limit reached (5). Please return tomorrow.', 429); }
 }
-async function createSession(userId, input, firstQuestion, resumeSummary) {
+async function createSession(userId, input, firstQuestion, resumeSummary, openingQuestion) {
   await claimDailyStart(userId);
-  return prisma.interviewSession.create({ data: { userId, interviewType: input.interviewType, branch: input.branch || null, questionLimit: input.questionLimit, currentQuestion: firstQuestion, currentDifficulty: firstQuestion.difficulty, resumeSummary: resumeSummary || null } });
+  return prisma.interviewSession.create({ data: { userId, interviewType: input.interviewType, branch: input.branch || null, questionLimit: input.questionLimit, currentQuestion: firstQuestion, currentDifficulty: firstQuestion.difficulty, resumeSummary: resumeSummary || null, openingQuestionContent: openingQuestion?.content || null, openingQuestionDifficulty: openingQuestion?.difficulty || null } });
 }
+async function getUsedOpeningQuestions(userId, interviewType, branch) {
+  const where = { userId, interviewType, status: 'COMPLETED', openingQuestionContent: { not: null } };
+  if (BRANCH_REQUIRED_TYPES.includes(interviewType)) where.branch = branch;
+  else where.branch = null;
+  const rows = await prisma.interviewSession.findMany({ where, select: { openingQuestionContent: true }, distinct: ['openingQuestionContent'] });
+  return rows.map((r) => r.openingQuestionContent).filter(Boolean);
+}
+
 async function startInterview(userId, input) {
   if (input.interviewType === INTERVIEW_TYPES.RESUME) throw new AppError('Resume interviews require a file upload.', 400);
-  const firstQuestion = await questionProvider.getRandomQuestion(input.branch, input.interviewType);
-  return serialize(await createSession(userId, input, firstQuestion));
+  const usedContents = await getUsedOpeningQuestions(userId, input.interviewType, input.branch || null);
+  const firstQuestion = await questionProvider.getRandomQuestion(input.branch, input.interviewType, usedContents);
+  return serialize(await createSession(userId, input, firstQuestion, null, firstQuestion));
 }
 async function startResumeInterview(userId, input) {
   const firstQuestion = await ai.generateFirstQuestion({ interviewType: INTERVIEW_TYPES.RESUME, difficulty: 'EASY', resumeSummary: input.resumeSummary });
   return serialize(await createSession(userId, { ...input, interviewType: INTERVIEW_TYPES.RESUME }, firstQuestion, input.resumeSummary));
 }
+
+async function retakeInterview(userId, sessionId) {
+  const original = await owned(userId, sessionId);
+  if (original.interviewType === INTERVIEW_TYPES.RESUME) throw new AppError('Resume interviews generate new AI questions on retake. Use start-resume instead.', 400);
+  if (!original.openingQuestionContent) throw new AppError('This session does not have a trackable opening question for retake.', 400);
+  const firstQuestion = { content: original.openingQuestionContent, difficulty: original.openingQuestionDifficulty || 'EASY' };
+  const input = { interviewType: original.interviewType, branch: original.branch, questionLimit: original.questionLimit };
+  return serialize(await createSession(userId, input, firstQuestion, null, firstQuestion));
+}
+
 async function owned(userId, sessionId, includeAnswers = false) {
   const session = await prisma.interviewSession.findUnique({ where: { id: sessionId }, include: includeAnswers ? { answers: { orderBy: { questionNumber: 'asc' } } } : undefined });
   if (!session) throw new AppError('Interview session not found.', 404);
@@ -181,4 +200,4 @@ async function getSessionById(userId, id) {
 async function getSessionsForUser(userId) { const rows = await prisma.interviewSession.findMany({ where: { userId }, include: { answers: { select: { id: true, analytics: true } } }, orderBy: { updatedAt: 'desc' } }); return rows.map((s) => serialize(s)); }
 async function getHistory(userId) { return getSessionsForUser(userId); }
 async function deleteSession(userId, id) { await owned(userId, id); await prisma.interviewSession.delete({ where: { id } }); return { sessionId: id, deleted: true }; }
-module.exports = { startInterview, startResumeInterview, submitAnswer, pause, resume, endSession, getSessionById, getSessionDetails: getSessionById, getSessionsForUser, getHistory, deleteSession };
+module.exports = { startInterview, startResumeInterview, retakeInterview, submitAnswer, pause, resume, endSession, getSessionById, getSessionDetails: getSessionById, getSessionsForUser, getHistory, deleteSession };

@@ -127,6 +127,11 @@ export const interview = {
     request(`/interview/${sessionId}`, {
       method: 'DELETE',
     }),
+
+  retake: (sessionId) =>
+    request(`/interview/${sessionId}/retake`, {
+      method: 'POST',
+    }),
 };
 
 export const leaderboard = {

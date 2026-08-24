@@ -61,6 +61,21 @@ export default function InterviewRoomPage() {
     }
   };
 
+  const handleRetake = async () => {
+    setActionLoading(true);
+    try {
+      const res = await interview.retake(sessionId);
+      router.push(`/interview/${res.data.sessionId}`);
+    } catch (err) {
+      setError(err.message || 'Failed to start retake.');
+    } finally {
+      setActionLoading(false);
+      setShowLeaveModal(false);
+    }
+  };
+
+  const isNonResumeActive = data?.status === 'ACTIVE' && data?.interviewType !== 'RESUME';
+
   const submit = async () => {
     if (!answer.trim() || sending) return;
     setSending(true);
@@ -252,6 +267,16 @@ export default function InterviewRoomPage() {
           >
             Pause & Leave
           </Button>
+          {isNonResumeActive && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={handleRetake}
+              loading={actionLoading}
+            >
+              Retake Interview
+            </Button>
+          )}
           <Button
             variant="primary"
             size="sm"

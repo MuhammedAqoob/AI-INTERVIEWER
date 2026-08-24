@@ -1,7 +1,7 @@
 const Groq = require('groq-sdk');
 const promptBuilder = require('../promptBuilder');
 
-const MODEL_NAME = 'llama-3.3-70b-versatile';
+const MODEL_NAME = process.env.GROQ_MODEL || 'openai/gpt-oss-120b';
 const TIMEOUT_MS = parseInt(process.env.AI_REQUEST_TIMEOUT, 10) || 12000;
 
 let client = null;
