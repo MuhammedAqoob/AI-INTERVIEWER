@@ -3,9 +3,227 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import TopNav from '../components/TopNav';
-import { Button, Card } from '../components/ui';
+import { Button, Card, Badge } from '../components/ui';
 import { auth } from '../lib/api';
 
+/* ─────────────────────────────────────────────
+   SVG Icons (inline, minimal, consistent)
+   ───────────────────────────────────────────── */
+const Icons = {
+  brain: (
+    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714a2.25 2.25 0 00.659 1.591L19 14.5M14.25 3.104c.251.023.501.05.75.082M19 14.5l-1.341 4.023a2.25 2.25 0 01-2.134 1.477H8.475a2.25 2.25 0 01-2.134-1.477L5 14.5m14 0H5" />
+    </svg>
+  ),
+  document: (
+    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+    </svg>
+  ),
+  chart: (
+    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
+    </svg>
+  ),
+  lightbulb: (
+    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 18v-5.25m0 0a6.01 6.01 0 001.5-.189m-1.5.189a6.01 6.01 0 01-1.5-.189m3.75 7.478a12.06 12.06 0 01-4.5 0m3.75 2.383a14.406 14.406 0 01-3 0M14.25 18v-.192c0-.983.658-1.823 1.508-2.316a7.5 7.5 0 10-7.517 0c.85.493 1.509 1.333 1.509 2.316V18" />
+    </svg>
+  ),
+  check: (
+    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+    </svg>
+  ),
+  arrow: (
+    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+    </svg>
+  ),
+  sparkle: (
+    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+      <path d="M12 2L14.09 8.26L20 9.27L15.55 13.97L16.91 20L12 16.9L7.09 20L8.45 13.97L4 9.27L9.91 8.26L12 2Z" />
+    </svg>
+  ),
+  tech: (
+    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 7.5l3 2.25-3 2.25m4.5 0h3m-9 8.25h13.5A2.25 2.25 0 0021 18V6a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 6v12a2.25 2.25 0 002.25 2.25z" />
+    </svg>
+  ),
+  hr: (
+    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
+    </svg>
+  ),
+  aptitude: (
+    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
+    </svg>
+  ),
+  resume: (
+    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+    </svg>
+  ),
+};
+
+/* ─────────────────────────────────────────────
+   Section Divider
+   ───────────────────────────────────────────── */
+function SectionDivider() {
+  return (
+    <div className="max-w-5xl mx-auto px-4 sm:px-6">
+      <div className="h-px bg-gradient-to-r from-transparent via-slate-200 dark:via-slate-800 to-transparent" />
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────
+   Hero Product Mockup
+   ───────────────────────────────────────────── */
+function HeroMockup() {
+  return (
+    <div className="relative mx-auto max-w-lg w-full">
+      {/* Glow behind card */}
+      <div className="absolute -inset-4 bg-gradient-to-br from-brand-500/10 via-brand-400/5 to-transparent rounded-3xl blur-2xl dark:from-brand-500/10 dark:via-brand-400/5" />
+
+      <div className="relative bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl overflow-hidden">
+        {/* Mockup header */}
+        <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 rounded-lg bg-brand-600 flex items-center justify-center">
+              <span className="text-white text-[9px] font-black">AI</span>
+            </div>
+            <span className="text-xs font-bold text-slate-700 dark:text-slate-300">AI Interviewer</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Badge variant="brand" className="text-[10px]">Technical</Badge>
+            <span className="text-[10px] text-slate-400 dark:text-slate-500">Question 3 of 5</span>
+          </div>
+        </div>
+
+        {/* Mockup messages */}
+        <div className="p-5 space-y-4">
+          {/* AI question */}
+          <div className="flex gap-3">
+            <div className="w-7 h-7 rounded-full bg-brand-600 flex items-center justify-center flex-shrink-0 mt-0.5">
+              <span className="text-white text-[9px] font-bold">AI</span>
+            </div>
+            <div className="bg-brand-50 dark:bg-brand-950/40 border border-brand-200/50 dark:border-brand-800/50 rounded-xl rounded-tl-sm px-4 py-2.5 max-w-[85%]">
+              <p className="text-sm text-slate-800 dark:text-slate-200 leading-relaxed">
+                Explain the difference between TCP and UDP. When would you choose one over the other?
+              </p>
+            </div>
+          </div>
+
+          {/* User answer */}
+          <div className="flex gap-3 justify-end">
+            <div className="bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl rounded-tr-sm px-4 py-2.5 max-w-[85%]">
+              <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
+                TCP is connection-oriented and ensures reliable delivery with ordering, while UDP is connectionless and faster but doesn&apos;t guarantee delivery...
+              </p>
+            </div>
+            <div className="w-7 h-7 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center flex-shrink-0 mt-0.5">
+              <svg className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0" />
+              </svg>
+            </div>
+          </div>
+
+          {/* Analytics bar */}
+          <div className="bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Score</span>
+              <Badge variant="success" className="text-[10px]">82 / 100</Badge>
+            </div>
+            <div className="grid grid-cols-5 gap-2">
+              {[
+                { label: 'Depth', val: 85 },
+                { label: 'Clarity', val: 78 },
+                { label: 'Relevance', val: 90 },
+                { label: 'Grammar', val: 80 },
+                { label: 'Confidence', val: 75 },
+              ].map((m) => (
+                <div key={m.label} className="text-center">
+                  <div className="h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden mb-1">
+                    <div
+                      className="h-full bg-brand-500 dark:bg-brand-400 rounded-full"
+                      style={{ width: `${m.val}%` }}
+                    />
+                  </div>
+                  <span className="text-[9px] text-slate-400 dark:text-slate-500">{m.label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────
+   Feature Card
+   ───────────────────────────────────────────── */
+function FeatureCard({ icon, title, description, color = 'brand' }) {
+  const colorMap = {
+    brand: 'bg-brand-50 dark:bg-brand-950/40 text-brand-600 dark:text-brand-400 border-brand-200/50 dark:border-brand-800/50',
+    purple: 'bg-purple-50 dark:bg-purple-950/40 text-purple-600 dark:text-purple-400 border-purple-200/50 dark:border-purple-800/50',
+    emerald: 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border-emerald-200/50 dark:border-emerald-800/50',
+    amber: 'bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border-amber-200/50 dark:border-amber-800/50',
+  };
+
+  return (
+    <div className="group p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-lg dark:hover:shadow-slate-900/50 transition-all duration-300">
+      <div className={`w-10 h-10 rounded-xl border ${colorMap[color]} flex items-center justify-center mb-4 transition-transform duration-300 group-hover:scale-110`}>
+        {icon}
+      </div>
+      <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 mb-1.5">{title}</h3>
+      <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed">{description}</p>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────
+   Interview Type Card
+   ───────────────────────────────────────────── */
+function InterviewTypeCard({ icon, title, description, badge, badgeVariant }) {
+  return (
+    <div className="flex items-start gap-4 p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 hover:border-slate-300 dark:hover:border-slate-700 transition-all duration-300">
+      <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 flex items-center justify-center flex-shrink-0">
+        {icon}
+      </div>
+      <div className="min-w-0">
+        <div className="flex items-center gap-2 mb-1">
+          <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">{title}</h3>
+          <Badge variant={badgeVariant} className="text-[10px]">{badge}</Badge>
+        </div>
+        <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">{description}</p>
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────
+   Step Card
+   ───────────────────────────────────────────── */
+function StepCard({ number, title, description }) {
+  return (
+    <div className="relative text-center space-y-4">
+      <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-brand-600 text-white text-lg font-extrabold shadow-lg shadow-brand-500/20">
+        {number}
+      </div>
+      <div>
+        <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 mb-1">{title}</h3>
+        <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed max-w-xs mx-auto">{description}</p>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════
+   MAIN HOME PAGE
+   ═══════════════════════════════════════════ */
 export default function Home() {
   const router = useRouter();
   const [user, setUser] = useState(null);
@@ -21,191 +239,255 @@ export default function Home() {
   }, []);
 
   const handleTakeInterview = () => {
-    if (user) {
-      router.push('/interview/setup');
-    } else {
-      router.push('/login');
-    }
+    router.push(user ? '/interview/setup' : '/login');
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors flex flex-col justify-between">
-      <div>
-        {/* Glass Navigation Bar */}
-        <TopNav username={user?.username} disableUserFetch />
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors flex flex-col">
+      {/* ─── Navigation ─── */}
+      <TopNav username={user?.username} disableUserFetch />
 
-        {/* Hero Section */}
-        <section className="max-w-5xl mx-auto py-16 sm:py-24 px-4 sm:px-6 text-center space-y-8">
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-brand-50 dark:bg-brand-950 text-brand-700 dark:text-brand-300 border border-brand-200/60 dark:border-brand-800/60 text-xs font-semibold">
-            <span className="w-2 h-2 rounded-full bg-brand-500 animate-pulse" />
-            AI-Powered Interview Practice
+      {/* ─── Hero Section ─── */}
+      <section className="relative overflow-hidden">
+        {/* Subtle background gradient */}
+        <div className="absolute inset-0 bg-gradient-to-b from-brand-50/50 via-transparent to-transparent dark:from-brand-950/20 dark:via-transparent pointer-events-none" />
+
+        <div className="relative max-w-6xl mx-auto px-4 sm:px-6 pt-16 sm:pt-24 pb-12 sm:pb-20">
+          <div className="grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
+            {/* Left: Copy */}
+            <div className="space-y-8 text-center lg:text-left">
+              {/* Eyebrow */}
+              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-brand-50 dark:bg-brand-950/50 border border-brand-200/60 dark:border-brand-800/60">
+                <span className="w-1.5 h-1.5 rounded-full bg-brand-500 animate-pulse" />
+                <span className="text-xs font-semibold text-brand-700 dark:text-brand-300">AI-Powered Interview Practice</span>
+              </div>
+
+              {/* Headline */}
+              <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight leading-[1.1]">
+                Practice like it&apos;s{' '}
+                <span className="text-brand-600 dark:text-brand-400">the real interview.</span>
+              </h1>
+
+              {/* Subhead */}
+              <p className="text-base sm:text-lg text-slate-500 dark:text-slate-400 max-w-xl mx-auto lg:mx-0 leading-relaxed">
+                Real-time AI interviews with adaptive follow-ups, instant scoring across 10 competencies, and personalized &ldquo;better answer&rdquo; feedback after every turn.
+              </p>
+
+              {/* CTAs */}
+              <div className="flex flex-wrap items-center justify-center lg:justify-start gap-4">
+                <Button
+                  variant="primary"
+                  size="lg"
+                  onClick={handleTakeInterview}
+                  className="px-8 py-3.5 text-base shadow-lg shadow-brand-500/20"
+                >
+                  Start an Interview
+                  <span className="ml-1">{Icons.arrow}</span>
+                </Button>
+
+                {user ? (
+                  <Button
+                    variant="outline"
+                    size="lg"
+                    onClick={() => router.push('/dashboard')}
+                    className="px-8 py-3.5 text-base"
+                  >
+                    View Dashboard
+                  </Button>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="lg"
+                    onClick={() => router.push('/register')}
+                    className="px-8 py-3.5 text-base"
+                  >
+                    Sign Up Free
+                  </Button>
+                )}
+              </div>
+
+              {/* Trust indicators */}
+              <div className="flex items-center justify-center lg:justify-start gap-6 text-xs text-slate-400 dark:text-slate-500">
+                <span className="flex items-center gap-1.5">{Icons.check} <span>10-point skill matrix</span></span>
+                <span className="flex items-center gap-1.5">{Icons.check} <span>Adaptive difficulty</span></span>
+                <span className="flex items-center gap-1.5">{Icons.check} <span>Instant feedback</span></span>
+              </div>
+            </div>
+
+            {/* Right: Mockup */}
+            <div className="hidden lg:block">
+              <HeroMockup />
+            </div>
           </div>
 
-          <h1 className="text-4xl sm:text-6xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100 leading-tight">
-            Master Technical Interviews with{' '}
-            <span className="text-brand-600 dark:text-brand-400">Real-Time AI Feedback</span>
-          </h1>
-
-          <p className="text-base sm:text-lg text-slate-600 dark:text-slate-400 max-w-2xl mx-auto leading-relaxed">
-            Practice domain-specific questions in Computer Science, Electronics, Mechanical, or upload your resume for tailored AI evaluation and scoring.
-          </p>
-
-          <div className="flex flex-wrap items-center justify-center gap-4 pt-4">
-            <Button
-              variant="primary"
-              size="lg"
-              onClick={handleTakeInterview}
-              className="px-8 py-3.5 text-base shadow-lg shadow-brand-500/20"
-            >
-              Take Interview →
-            </Button>
-
-            {user ? (
-              <Button
-                variant="outline"
-                size="lg"
-                onClick={() => router.push('/dashboard')}
-                className="px-8 py-3.5 text-base"
-              >
-                Go to Dashboard
-              </Button>
-            ) : (
-              <Button
-                variant="outline"
-                size="lg"
-                onClick={() => router.push('/register')}
-                className="px-8 py-3.5 text-base"
-              >
-                Sign Up Free
-              </Button>
-            )}
+          {/* Mobile mockup (below copy on small screens) */}
+          <div className="mt-12 lg:hidden">
+            <HeroMockup />
           </div>
-        </section>
+        </div>
+      </section>
 
-        {/* What It Does Section */}
-        <section className="max-w-5xl mx-auto py-12 px-4 sm:px-6 space-y-8">
-          <div className="text-center space-y-2">
-            <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-slate-100">
-              What It Does
+      <SectionDivider />
+
+      {/* ─── Capabilities ─── */}
+      <section className="py-16 sm:py-24">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 space-y-12">
+          <div className="text-center space-y-3 max-w-2xl mx-auto">
+            <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100">
+              Everything you need to ace your interview
             </h2>
-            <p className="text-sm text-slate-500 dark:text-slate-400">
-              Everything you need to improve your interview performance
+            <p className="text-sm sm:text-base text-slate-500 dark:text-slate-400">
+              From question generation to performance analytics — the complete toolkit for interview preparation.
             </p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-            <Card className="p-6 space-y-3">
-              <div className="w-10 h-10 rounded-xl bg-brand-50 dark:bg-brand-950 text-brand-600 dark:text-brand-400 flex items-center justify-center font-bold text-lg">
-                ⚡
-              </div>
-              <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">
-                Adaptive AI Questions
-              </h3>
-              <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
-                Generates dynamic follow-up questions tailored to your answer depth, technical domain, and chosen branch.
-              </p>
-            </Card>
-
-            <Card className="p-6 space-y-3">
-              <div className="w-10 h-10 rounded-xl bg-purple-50 dark:bg-purple-950 text-purple-600 dark:text-purple-400 flex items-center justify-center font-bold text-lg">
-                📄
-              </div>
-              <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">
-                Resume PDF & Image Upload
-              </h3>
-              <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
-                Upload your resume to extract your specific technologies, work history, and projects for customized mock questions.
-              </p>
-            </Card>
-
-            <Card className="p-6 space-y-3">
-              <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold text-lg">
-                📊
-              </div>
-              <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">
-                10-Point Skill Matrix
-              </h3>
-              <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
-                Evaluates technical depth, problem-solving, confidence, grammar, relevance, and professionalism on every turn.
-              </p>
-            </Card>
-
-            <Card className="p-6 space-y-3">
-              <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-950 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold text-lg">
-                💡
-              </div>
-              <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">
-                Instant "Better Answer" Feedback
-              </h3>
-              <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
-                Review suggested model answers after every turn to quickly learn optimal phrasing, key terminology, and depth.
-              </p>
-            </Card>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
+            <FeatureCard
+              icon={Icons.brain}
+              title="Adaptive AI Questions"
+              description="Dynamic follow-ups tailored to your answer depth, technical domain, and chosen branch."
+              color="brand"
+            />
+            <FeatureCard
+              icon={Icons.document}
+              title="Resume-Based Interviews"
+              description="Upload a resume to receive personalized questions based on your specific experience and skills."
+              color="purple"
+            />
+            <FeatureCard
+              icon={Icons.chart}
+              title="Skill Analytics"
+              description="Track performance across 10 competencies — technical depth, clarity, confidence, and more."
+              color="emerald"
+            />
+            <FeatureCard
+              icon={Icons.lightbulb}
+              title="Better Answer Feedback"
+              description="Review stronger example answers after every turn to learn optimal phrasing and depth."
+              color="amber"
+            />
           </div>
-        </section>
+        </div>
+      </section>
 
-        {/* How It Works Section */}
-        <section className="max-w-5xl mx-auto py-12 px-4 sm:px-6 space-y-8">
-          <div className="text-center space-y-2">
-            <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-slate-100">
-              How It Works
+      <SectionDivider />
+
+      {/* ─── Interview Types ─── */}
+      <section className="py-16 sm:py-24">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 space-y-12">
+          <div className="text-center space-y-3 max-w-2xl mx-auto">
+            <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100">
+              One platform, every interview type
             </h2>
-            <p className="text-sm text-slate-500 dark:text-slate-400">
-              Three simple steps to start practicing
+            <p className="text-sm sm:text-base text-slate-500 dark:text-slate-400">
+              Choose the format that matches your target role. Each type is powered by specialized AI evaluation.
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-6 space-y-3">
-              <span className="text-xs font-bold text-brand-600 dark:text-brand-400 bg-brand-50 dark:bg-brand-950 px-2.5 py-1 rounded-full border border-brand-200/60 dark:border-brand-800/60">
-                Step 1
-              </span>
-              <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
-                Setup Interview
-              </h3>
-              <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
-                Select Technical, HR, Aptitude, or Resume track, pick your branch, and choose question limit.
-              </p>
-            </div>
+          <div className="grid sm:grid-cols-2 gap-4 max-w-3xl mx-auto">
+            <InterviewTypeCard
+              icon={Icons.tech}
+              title="Technical"
+              description="Branch-specific questions for Computer Science, Electronics, Mechanical, Civil, or Electrical engineering."
+              badge="5 Branches"
+              badgeVariant="brand"
+            />
+            <InterviewTypeCard
+              icon={Icons.hr}
+              title="HR"
+              description="Behavioral and situational interview questions to practice communication and professional presence."
+              badge="Behavioral"
+              badgeVariant="info"
+            />
+            <InterviewTypeCard
+              icon={Icons.aptitude}
+              title="Aptitude"
+              description="Problem-solving and analytical reasoning questions to sharpen your quantitative thinking."
+              badge="Analytical"
+              badgeVariant="warning"
+            />
+            <InterviewTypeCard
+              icon={Icons.resume}
+              title="Resume"
+              description="Upload your resume and receive personalized questions drawn directly from your experience."
+              badge="Personalized"
+              badgeVariant="success"
+            />
+          </div>
+        </div>
+      </section>
 
-            <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-6 space-y-3">
-              <span className="text-xs font-bold text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-950 px-2.5 py-1 rounded-full border border-purple-200/60 dark:border-purple-800/60">
-                Step 2
-              </span>
-              <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
-                Answer AI Questions
-              </h3>
-              <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
-                Respond to AI-generated questions in real-time as difficulty adapts to your responses.
-              </p>
-            </div>
+      <SectionDivider />
 
-            <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-6 space-y-3">
-              <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950 px-2.5 py-1 rounded-full border border-emerald-200/60 dark:border-emerald-800/60">
-                Step 3
-              </span>
-              <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
-                Review & Improve
-              </h3>
-              <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
-                Check overall scores, suggested better answers, competency charts, and leaderboard standing.
-              </p>
-            </div>
+      {/* ─── How It Works ─── */}
+      <section className="py-16 sm:py-24">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 space-y-12">
+          <div className="text-center space-y-3 max-w-2xl mx-auto">
+            <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100">
+              Three steps to start improving
+            </h2>
           </div>
 
-        </section>
-      </div>
+          <div className="grid sm:grid-cols-3 gap-8 sm:gap-12 max-w-3xl mx-auto">
+            <StepCard
+              number="01"
+              title="Choose your interview"
+              description="Select your interview type, branch, and number of questions."
+            />
+            <StepCard
+              number="02"
+              title="Interview with AI"
+              description="Answer adaptive questions in real time as difficulty adjusts to your level."
+            />
+            <StepCard
+              number="03"
+              title="Review and improve"
+              description="Analyze scores, study better answers, and track your progress over time."
+            />
+          </div>
+        </div>
+      </section>
 
-      {/* Footer */}
-      <footer className="mt-16 border-t border-slate-200/80 dark:border-slate-800/80 bg-white/50 dark:bg-slate-900/50 py-8 transition-colors">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500 dark:text-slate-400">
-          <div className="flex items-center gap-2 font-bold text-slate-800 dark:text-slate-200">
-            <div className="w-5 h-5 rounded-md bg-brand-600 text-white flex items-center justify-center text-[10px] font-black">
+      {/* ─── Final CTA ─── */}
+      <section className="py-16 sm:py-24">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6">
+          <div className="relative overflow-hidden rounded-3xl bg-slate-900 dark:bg-slate-900 border border-slate-800 px-8 py-16 sm:px-16 sm:py-20 text-center">
+            {/* Background glow */}
+            <div className="absolute inset-0 bg-gradient-to-br from-brand-600/10 via-transparent to-brand-400/5 pointer-events-none" />
+
+            <div className="relative space-y-6">
+              <h2 className="text-2xl sm:text-4xl font-extrabold tracking-tight text-white">
+                Ready to practice your next interview?
+              </h2>
+              <p className="text-sm sm:text-base text-slate-400 max-w-lg mx-auto">
+                Start a free AI-powered interview session and get instant, actionable feedback on your performance.
+              </p>
+              <div>
+                <Button
+                  variant="primary"
+                  size="lg"
+                  onClick={handleTakeInterview}
+                  className="px-10 py-4 text-base shadow-lg shadow-brand-500/25"
+                >
+                  Start an Interview
+                  <span className="ml-1">{Icons.arrow}</span>
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ─── Footer ─── */}
+      <footer className="mt-auto border-t border-slate-200/80 dark:border-slate-800/80 bg-white/50 dark:bg-slate-950/50 transition-colors">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500 dark:text-slate-400">
+          <div className="flex items-center gap-2.5">
+            <div className="w-6 h-6 rounded-lg bg-brand-600 text-white flex items-center justify-center text-[9px] font-black">
               AI
             </div>
-            <span>AI Interviewer</span>
+            <span className="font-bold text-slate-800 dark:text-slate-200">AI Interviewer</span>
           </div>
-          <p>© {new Date().getFullYear()} AI Interviewer. All rights reserved.</p>
+          <p>&copy; {new Date().getFullYear()} AI Interviewer. All rights reserved.</p>
         </div>
       </footer>
     </div>
