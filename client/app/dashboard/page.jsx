@@ -182,23 +182,8 @@ export default function DashboardPage() {
   const analytics = stats?.analytics || {};
   const counts = stats?.interviewCounts || {};
 
-  const overallScore = useMemo(() => {
-    const types = Object.values(analytics);
-    if (types.length === 0) return 0;
-    const allValues = types.flatMap((group) => Object.values(group || {}));
-    const nonZero = allValues.filter((v) => v > 0);
-    if (nonZero.length === 0) return 0;
-    return Math.round(nonZero.reduce((s, v) => s + v, 0) / nonZero.length);
-  }, [analytics]);
-
-  const categoryScores = useMemo(() => {
-    const result = {};
-    for (const [type, group] of Object.entries(analytics)) {
-      const values = Object.values(group || {}).filter((v) => v > 0);
-      result[type] = values.length ? Math.round(values.reduce((s, v) => s + v, 0) / values.length) : 0;
-    }
-    return result;
-  }, [analytics]);
+  const overallScore = stats?.averageScore ?? 0;
+  const categoryScores = stats?.categoryScores || {};
 
   const hasData = stats && stats.completedInterviews > 0;
 

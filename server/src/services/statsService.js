@@ -16,6 +16,6 @@ async function getDashboardSummary(userId) {
   const score = performanceService.snapshot(aggregate);
   const leaderboardEligibleSessions = sessions.filter((s) => s.status === 'COMPLETED').length;
   // Analytics are persistent user performance, not a view of deletable sessions.
-  return { interviewsRemainingToday: Math.max(0, 5 - (usage?.interviewsStarted || 0)), totalSessions: sessions.length, completedInterviews: sessions.filter((s) => s.status === 'COMPLETED').length, leaderboardEligibleSessions, interviewCounts: counts, continueSessionId: paused?.id || null, analytics: groupedAnalytics(score) };
+  return { interviewsRemainingToday: Math.max(0, 5 - (usage?.interviewsStarted || 0)), totalSessions: sessions.length, completedInterviews: sessions.filter((s) => s.status === 'COMPLETED').length, leaderboardEligibleSessions, interviewCounts: counts, continueSessionId: paused?.id || null, analytics: groupedAnalytics(score), averageScore: score.averageScore, categoryScores: score.categoryScores };
 }
 module.exports = { getDashboardSummary };
