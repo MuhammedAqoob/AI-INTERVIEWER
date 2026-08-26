@@ -220,13 +220,17 @@ export default function InterviewRoomPage() {
                   value={answer}
                   onChange={(e) => setAnswer(e.target.value)}
                   placeholder="Type your answer here..."
+                  maxLength={5000}
                 />
-                <div className="flex justify-end">
+                <div className="flex items-center justify-between">
+                  <p className={`text-xs ${answer.length > 5000 ? 'text-rose-500' : answer.length > 4500 ? 'text-amber-500' : 'text-slate-400 dark:text-slate-500'}`}>
+                    {answer.length} / 5,000 characters
+                  </p>
                   <Button
                     variant="primary"
                     size="md"
                     loading={sending}
-                    disabled={!answer.trim()}
+                    disabled={!answer.trim() || answer.length > 5000}
                     onClick={submit}
                     icon={
                       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">

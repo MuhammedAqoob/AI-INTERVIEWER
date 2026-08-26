@@ -32,6 +32,7 @@ export default function TopNav({ username, disableUserFetch = false }) {
     }
   }, [username, disableUserFetch]);
 
+  // Only use TopNav-fetched username if the parent page did not supply one.
   const effectiveUsername = username || fetchedUsername;
 
   const handleLogout = async () => {

@@ -113,7 +113,8 @@ function HistorySessionCard({ session, onDelete, onViewDetails, onRetake, deleti
   const status = STATUS_CONFIG[session.status] || STATUS_CONFIG.COMPLETED;
   const canResume = session.status === 'ACTIVE' || session.status === 'PAUSED';
   const isCompleted = session.status === 'COMPLETED';
-  const isNonResume = isCompleted && session.interviewType !== 'RESUME';
+  // Retake only for incomplete (ACTIVE/PAUSED) non-Resume sessions
+  const canRetake = !isCompleted && session.interviewType !== 'RESUME';
   const hasScore = session.overallAverage != null && session.overallAverage > 0;
 
   return (
@@ -188,7 +189,7 @@ function HistorySessionCard({ session, onDelete, onViewDetails, onRetake, deleti
               Details
             </Button>
           )}
-          {isNonResume && (
+          {canRetake && (
             <Button variant="secondary" size="sm" onClick={() => onRetake(id)}>
               Retake
             </Button>
@@ -244,7 +245,7 @@ export default function HistoryPage() {
     const completed = sessions.filter((s) => s.status === 'COMPLETED').length;
     const inProgress = sessions.filter((s) => s.status === 'ACTIVE' || s.status === 'PAUSED').length;
     const scored = sessions.filter((s) => s.status === 'COMPLETED' && s.overallAverage != null && s.overallAverage > 0);
-    const avgScore = scored.length > 0 ? Math.round(scored.reduce((sum, s) => sum + s.overallAverage, 0) / scored.length) : 0;
+    const avgScore = scored.length > 0 ? Math.round(scored.reduce((sum, s) => sum + s.overallAverage, 0) / scored.length * 100) / 100 : 0;
     return { total, completed, inProgress, avgScore, hasData: total > 0 };
   }, [sessions]);
 

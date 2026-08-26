@@ -24,7 +24,7 @@ function sessionMetrics(answers, interviewType) {
       if (Number.isFinite(value)) values.push(value);
     }
   }
-  return { overallAverage: values.length ? Math.round(values.reduce((sum, v) => sum + v, 0) / values.length) : 0, turnCount: (answers || []).length, analyticsSamples: samples };
+  return { overallAverage: values.length ? Math.round(values.reduce((sum, v) => sum + v, 0) / values.length * 100) / 100 : 0, turnCount: (answers || []).length, analyticsSamples: samples };
 }
 function serialize(session, includeAnswers = false) {
   const metrics = sessionMetrics(session.answers, session.interviewType);
@@ -62,6 +62,8 @@ async function startResumeInterview(userId, input) {
 
 async function retakeInterview(userId, sessionId) {
   const original = await owned(userId, sessionId);
+  if (original.status === 'COMPLETED') throw new AppError('Cannot retake a completed interview. Completed sessions are already scored.', 400);
+  if (original.status !== 'ACTIVE' && original.status !== 'PAUSED') throw new AppError('Only active or paused interviews can be retaken.', 400);
   if (original.interviewType === INTERVIEW_TYPES.RESUME) throw new AppError('Resume interviews generate new AI questions on retake. Use start-resume instead.', 400);
   if (!original.openingQuestionContent) throw new AppError('This session does not have a trackable opening question for retake.', 400);
   const firstQuestion = { content: original.openingQuestionContent, difficulty: original.openingQuestionDifficulty || 'EASY' };

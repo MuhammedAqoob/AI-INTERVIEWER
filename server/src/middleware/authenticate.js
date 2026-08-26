@@ -2,24 +2,14 @@ const { verifyToken } = require('../utils/jwt');
 const prisma = require('../config/database');
 
 /**
- * Check database connection
- */
-async function checkDatabaseConnection() {
-  try {
-    await prisma.$queryRaw`SELECT 1`;
-    return true;
-  } catch (error) {
-    return false;
-  }
-}
-
-/**
  * Authentication middleware
- * Reads JWT from cookie, verifies token, attaches user to request
+ * Reads JWT from cookie, verifies token, attaches user to request.
+ * Removed the separate database connection check (SELECT 1) that ran on
+ * every authenticated request — the subsequent findUnique query already
+ * tests connectivity and will throw if the DB is down.
  */
 async function authenticate(req, res, next) {
   try {
-    // Get token from cookie
     const token = req.cookies.token;
 
     if (!token) {
@@ -29,19 +19,8 @@ async function authenticate(req, res, next) {
       });
     }
 
-    // Verify token
     const decoded = verifyToken(token);
 
-    // Check database connection first
-    const dbConnected = await checkDatabaseConnection();
-    if (!dbConnected) {
-      return res.status(503).json({
-        success: false,
-        message: 'Service temporarily unavailable. Please try again later.',
-      });
-    }
-
-    // Find user in database
     const user = await prisma.user.findUnique({
       where: { id: decoded.id },
       select: {

@@ -210,7 +210,7 @@ export default function DashboardPage() {
   if (error && !stats) {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-slate-950 transition-colors">
-        <TopNav username={user?.username} />
+        <TopNav username={user?.username} disableUserFetch />
         <main className="max-w-6xl mx-auto py-20 px-4 sm:px-6 text-center">
           <Card className="max-w-md mx-auto p-8 space-y-4">
             <div className="w-12 h-12 rounded-2xl bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 flex items-center justify-center mx-auto">
@@ -229,7 +229,7 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 transition-colors pb-16">
-      <TopNav username={user?.username} />
+      <TopNav username={user?.username} disableUserFetch />
 
       <main className="max-w-6xl mx-auto py-10 px-4 sm:px-6 lg:px-8 space-y-10">
 
@@ -578,63 +578,78 @@ export default function DashboardPage() {
    ═══════════════════════════════════════════════ */
 function Recommendations({ categoryScores }) {
   const router = useRouter();
-  const tech = categoryScores.TECHNICAL || 0;
-  const hr = categoryScores.HR || 0;
-  const apt = categoryScores.APTITUDE || 0;
+  const tech = categoryScores.TECHNICAL;
+  const hr = categoryScores.HR;
+  const apt = categoryScores.APTITUDE;
 
   const items = [];
 
-  // Find strongest and weakest
-  const scores = [
-    { type: 'TECHNICAL', label: 'Technical', score: tech, route: '/interview/setup' },
-    { type: 'HR', label: 'HR', score: hr, route: '/interview/setup' },
-    { type: 'APTITUDE', label: 'Aptitude', score: apt, route: '/interview/setup' },
+  // IMPORTANT: null/undefined means the category was NEVER completed.
+  // Only categories with an actual numeric score are considered completed.
+  const categories = [
+    { type: 'TECHNICAL', label: 'Technical', score: tech, completed: typeof tech === 'number' && tech !== null, route: '/interview/setup' },
+    { type: 'HR', label: 'HR', score: hr, completed: typeof hr === 'number' && hr !== null, route: '/interview/setup' },
+    { type: 'APTITUDE', label: 'Aptitude', score: apt, completed: typeof apt === 'number' && apt !== null, route: '/interview/setup' },
   ];
 
-  const withData = scores.filter((s) => s.score > 0);
-  if (withData.length === 0) return null;
+  const uncompleted = categories.filter((c) => !c.completed);
+  const completed = categories.filter((c) => c.completed);
 
-  const sorted = [...withData].sort((a, b) => a.score - b.score);
-  const weakest = sorted[0];
-  const strongest = sorted[sorted.length - 1];
-
-  // Weakest
-  if (weakest.score < 50) {
+  if (completed.length === 0 && uncompleted.length > 0) {
+    // No completed interviews yet — recommend trying any uncompleted type
+    const target = uncompleted[0];
     items.push({
-      title: `${weakest.label} needs attention`,
-      description: `Your ${weakest.label.toLowerCase()} score is ${weakest.score}. Focused practice can help improve this area significantly.`,
-      type: 'warning',
-    });
-  } else if (weakest.score < 70) {
-    items.push({
-      title: `${weakest.label} still has room to improve`,
-      description: `At ${weakest.score}, there's opportunity to strengthen your ${weakest.label.toLowerCase()} performance.`,
+      title: `${target.label} is unexplored`,
+      description: `You haven't completed a ${target.label.toLowerCase()} interview yet. Try one to start building your performance profile in this area.`,
       type: 'info',
     });
-  }
-
-  // Middle category (if exists)
-  if (withData.length >= 3) {
-    const middle = sorted[1];
-    if (middle.score >= 50 && middle.score < 80) {
+    if (uncompleted.length > 1) {
+      const next = uncompleted[1];
       items.push({
-        title: `${middle.label} is progressing well`,
-        description: `A score of ${middle.score} shows solid fundamentals. A few more sessions could push this higher.`,
+        title: `Also try ${next.label}`,
+        description: `Explore ${next.label.toLowerCase()} to build a more complete performance profile.`,
         type: 'brand',
+      });
+    }
+  } else if (completed.length > 0) {
+    // Recommend uncompleted categories first, then weakest completed
+    for (const cat of uncompleted) {
+      items.push({
+        title: `${cat.label} is unexplored`,
+        description: `You haven't completed a ${cat.label.toLowerCase()} interview yet. Try one to expand your performance profile.`,
+        type: 'info',
+      });
+    }
+
+    // Among completed categories, find weakest and strongest
+    const sorted = [...completed].sort((a, b) => a.score - b.score);
+    const weakest = sorted[0];
+    const strongest = sorted[sorted.length - 1];
+
+    if (weakest.score < 50) {
+      items.push({
+        title: `${weakest.label} needs attention`,
+        description: `Your ${weakest.label.toLowerCase()} score is ${weakest.score}. Focused practice can help improve this area significantly.`,
+        type: 'warning',
+      });
+    } else if (weakest.score < 70) {
+      items.push({
+        title: `${weakest.label} still has room to improve`,
+        description: `At ${weakest.score}, there's opportunity to strengthen your ${weakest.label.toLowerCase()} performance.`,
+        type: 'info',
+      });
+    }
+
+    if (strongest.score >= 70) {
+      items.push({
+        title: `${strongest.label} is your strongest area`,
+        description: `At ${strongest.score}, you're performing well. Keep maintaining this level with occasional practice.`,
+        type: 'success',
       });
     }
   }
 
-  // Strongest
-  if (strongest.score >= 70) {
-    items.push({
-      title: `${strongest.label} is your strongest area`,
-      description: `At ${strongest.score}, you're performing well. Keep maintaining this level with occasional practice.`,
-      type: 'success',
-    });
-  }
-
-  // If we have no items yet (all scores similar), add a generic one
+  // If we have no items yet (all completed and all similar), add a generic one
   if (items.length === 0) {
     items.push({
       title: 'Keep practicing across all areas',

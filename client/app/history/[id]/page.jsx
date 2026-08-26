@@ -100,7 +100,7 @@ export default function SessionDetailsPage() {
             >
               {data.status === 'PAUSED' ? 'Continue Interview' : 'View Room'}
             </Button>
-            {data.status === 'COMPLETED' && data.interviewType !== 'RESUME' && (
+            {(data.status === 'ACTIVE' || data.status === 'PAUSED') && data.interviewType !== 'RESUME' && (
               <Button
                 variant="secondary"
                 size="sm"
