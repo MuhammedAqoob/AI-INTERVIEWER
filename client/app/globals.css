@@ -102,3 +102,57 @@
     transform: none !important;
   }
 }
+
+/* ═══ AI demo sequence refinements ═══ */
+
+/* Inbound bubbles slide from the left toward their final position */
+@keyframes fx-slide-x {
+  from { opacity: 0; transform: translateX(-0.85rem); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+/* Gentle fade-only (user avatar) */
+@keyframes fx-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+/* "Typing"-style reveal: the bubble (and its text) draws itself left → right */
+@keyframes fx-wipe {
+  from { clip-path: inset(0 100% 0 0); }
+  to   { clip-path: inset(0 0 0 0); }
+}
+
+.fx-enter-x { animation: fx-slide-x 0.5s var(--fx-ease) both; animation-delay: var(--fd); }
+.fx-fade-in { animation: fx-fade 0.35s var(--fx-ease) both; animation-delay: var(--fd); }
+.fx-wipe    { animation: fx-wipe 0.75s var(--fx-ease) both; animation-delay: var(--fd); }
+
+/* Viewport-gated sequence for the below-the-fold mockup placement.
+   The wrapper is hidden while armed; once it scrolls into view the same
+   staged animation plays (children keep their per-element --fd delays).
+   When JS is available (html.motion set by the inline bootstrap script) the
+   wrapper starts hidden from the FIRST PAINT, so it never appears fully
+   populated before its sequence begins — on any viewport. Without JS the
+   rule never applies and the static mockup stays visible. */
+html.motion .demo-gated-root { opacity: 0; }
+.demo-hidden { opacity: 0; }
+.demo-playing { animation: fx-zoom 0.55s var(--fx-ease) both; }
+.demo-playing .demo-child { animation: fx-rise 0.5s var(--fx-ease) both; animation-delay: var(--fd); }
+.demo-playing .demo-child-x    { animation-name: fx-slide-x; }
+.demo-playing .demo-child-fade { animation-name: fx-fade; }
+.demo-playing .demo-child-wipe { animation: fx-wipe 0.75s var(--fx-ease) both; animation-delay: var(--fd); }
+.demo-playing .demo-child-pop  { animation-name: fx-pop; }
+.demo-playing .demo-bar { animation: fx-grow-bar 0.45s var(--fx-ease) both; animation-delay: var(--fd); }
+
+@media (prefers-reduced-motion: reduce) {
+  .fx-enter-x,
+  .fx-fade-in,
+  .fx-wipe {
+    animation: none !important;
+  }
+  html.motion .demo-gated-root,
+  .demo-hidden { opacity: 1 !important; }
+  .demo-playing { animation: none !important; }
+  .demo-playing .demo-child,
+  .demo-playing .demo-bar {
+    animation: none !important;
+  }
+}

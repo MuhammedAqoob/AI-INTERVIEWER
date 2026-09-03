@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 /**
  * Reveal — viewport-triggered entrance animation (scroll reveal).
@@ -66,4 +66,58 @@ export default function Reveal({
       {children}
     </Tag>
   );
+}
+
+/**
+ * useInViewPlay — plays a CSS-driven staged sequence when the element first
+ * becomes prominent on screen (for placements that start below the fold,
+ * e.g. the AI mockup on mobile).
+ *
+ * Phases:
+ *  - idle:    nothing applied. The wrapper is still hidden from the first paint
+ *             by the `html.motion .demo-gated-root` CSS rule (JS is available);
+ *             without JS / with reduced motion that rule never hides content.
+ *  - hidden:  explicit opacity-0 arm, added just before observing.
+ *  - playing: the element crossed the trigger line; `.demo-playing` runs the
+ *             same keyframe animations the desktop placement uses.
+ *
+ * The observer uses a -45% bottom root margin, i.e. the sequence starts when
+ * the card's top reaches ~55% of the viewport height — not when its bottom
+ * edge merely peeks into view. Plays once, never re-runs.
+ */
+export function useInViewPlay({ enabled = true } = {}) {
+  const ref = useRef(null);
+  const [phase, setPhase] = useState('idle');
+
+  useLayoutEffect(() => {
+    if (!enabled) return;
+    const el = ref.current;
+    if (!el) return;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+    if (typeof IntersectionObserver === 'undefined') {
+      // No observer support — fall back to playing immediately so content shows.
+      setPhase('playing');
+      return;
+    }
+
+    setPhase('hidden');
+
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          io.disconnect();
+          setPhase('playing');
+        }
+      },
+      { threshold: 0, rootMargin: '0px 0px -45% 0px' }
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [enabled]);
+
+  const className =
+    phase === 'hidden' ? 'demo-hidden' : phase === 'playing' ? 'demo-playing' : '';
+
+  return { ref, className };
 }

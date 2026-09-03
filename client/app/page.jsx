@@ -4,7 +4,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import TopNav from '../components/TopNav';
-import Reveal from '../components/motion';
+import Reveal, { useInViewPlay } from '../components/motion';
 import { Button, Card, Badge } from '../components/ui';
 import { auth } from '../lib/api';
 
@@ -83,10 +83,23 @@ function SectionDivider() {
 /* ─────────────────────────────────────────────
    Hero Product Mockup
    ───────────────────────────────────────────── */
-function HeroMockup({ variant = 'load' }) {
-  const staged = variant === 'load';
+function HeroMockup({ mode = 'load' }) {
+  const gated = mode === 'inview';
+  const { ref: gateRef, className: gateState } = useInViewPlay({ enabled: gated });
+
+  // One staged sequence for both placements; only the trigger differs:
+  //  - mode="load"   (desktop hero, above the fold) → pure CSS at first paint
+  //  - mode="inview" (mobile, below the fold)       → plays when scrolled into view
+  // `c(loadClass, gateClass)` picks the animation classes for the current mode.
+  const c = (loadClass, gateClass) => (gated ? gateClass : loadClass);
+  const fd = (s) => ({ '--fd': s });
+
   return (
-    <div className={`relative mx-auto max-w-lg w-full ${staged ? 'fx-enter-zoom' : ''}`} style={staged ? { '--fd': '0.08s' } : undefined}>
+    <div
+      ref={gateRef}
+      className={`relative mx-auto max-w-lg w-full ${gated ? `demo-gated-root ${gateState}` : 'fx-enter-zoom'}`}
+      style={gated ? undefined : fd('0.06s')}
+    >
       {/* Glow behind card */}
       <div className="absolute -inset-4 bg-gradient-to-br from-brand-500/10 via-brand-400/5 to-transparent rounded-3xl blur-2xl dark:from-brand-500/10 dark:via-brand-400/5" />
 
@@ -107,8 +120,8 @@ function HeroMockup({ variant = 'load' }) {
 
         {/* Mockup messages */}
         <div className="p-5 space-y-4">
-          {/* AI question */}
-          <div className={`flex gap-3 ${staged ? 'fx-enter' : ''}`} style={staged ? { '--fd': '0.4s' } : undefined}>
+          {/* AI question — slides in from the left */}
+          <div className={`flex gap-3 ${c('fx-enter-x', 'demo-child demo-child-x')}`} style={fd('0.3s')}>
             <div className="w-7 h-7 rounded-full bg-brand-600 flex items-center justify-center flex-shrink-0 mt-0.5">
               <span className="text-white text-[9px] font-bold">AI</span>
             </div>
@@ -119,25 +132,27 @@ function HeroMockup({ variant = 'load' }) {
             </div>
           </div>
 
-          {/* User answer */}
-          <div className={`flex gap-3 justify-end ${staged ? 'fx-enter' : ''}`} style={staged ? { '--fd': '0.6s' } : undefined}>
-            <div className="bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl rounded-tr-sm px-4 py-2.5 max-w-[85%]">
+          {/* User answer — bubble draws itself in like it is being typed */}
+          <div className="flex gap-3 justify-end">
+            <div className={`bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl rounded-tr-sm px-4 py-2.5 max-w-[85%] ${c('fx-wipe', 'demo-child demo-child-wipe')}`} style={fd('0.92s')}>
               <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
                 TCP is connection-oriented and ensures reliable delivery with ordering, while UDP is connectionless and faster but doesn&apos;t guarantee delivery...
               </p>
             </div>
-            <div className="w-7 h-7 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center flex-shrink-0 mt-0.5">
+            <div className={`w-7 h-7 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center flex-shrink-0 mt-0.5 ${c('fx-fade-in', 'demo-child demo-child-fade')}`} style={fd('0.78s')}>
               <svg className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0" />
               </svg>
             </div>
           </div>
 
-          {/* Analytics bar */}
-          <div className={`bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 ${staged ? 'fx-enter' : ''}`} style={staged ? { '--fd': '0.82s' } : undefined}>
+          {/* Analytics — appears after the answer, then bars grow, then the score pops */}
+          <div className={`bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 ${c('fx-enter', 'demo-child')}`} style={fd('1.7s')}>
             <div className="flex items-center justify-between mb-2">
               <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Score</span>
-              <span className="inline-block fx-enter-pop" style={{ '--fd': '1.15s' }}><Badge variant="success" className="text-[10px]">82 / 100</Badge></span>
+              <span className={`inline-block ${c('fx-enter-pop', 'demo-child demo-child-pop')}`} style={fd('2.1s')}>
+                <Badge variant="success" className="text-[10px]">82 / 100</Badge>
+              </span>
             </div>
             <div className="grid grid-cols-5 gap-2">
               {[
@@ -150,8 +165,8 @@ function HeroMockup({ variant = 'load' }) {
                 <div key={m.label} className="text-center">
                   <div className="h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden mb-1">
                     <div
-                      className={`h-full bg-brand-500 dark:bg-brand-400 rounded-full ${staged ? 'bar-fill' : ''}`}
-                      style={{ width: `${m.val}%`, '--fd': staged ? `${(1.0 + idx * 0.07).toFixed(2)}s` : '0s' }}
+                      className={`h-full bg-brand-500 dark:bg-brand-400 rounded-full ${c('bar-fill', 'demo-bar')}`}
+                      style={{ width: `${m.val}%`, '--fd': `${(1.9 + idx * 0.05).toFixed(2)}s` }}
                     />
                   </div>
                   <span className="text-[9px] text-slate-400 dark:text-slate-500">{m.label}</span>
@@ -328,7 +343,7 @@ export default function Home() {
 
           {/* Mobile mockup (below copy on small screens) */}
           <div className="mt-12 lg:hidden">
-            <Reveal delay={80}><HeroMockup variant="reveal" /></Reveal>
+            <HeroMockup mode="inview" />
           </div>
         </div>
       </section>

@@ -21,7 +21,11 @@ export default function TopNav({ username, disableUserFetch = false }) {
   const [scrolled, setScrolled] = useState(false);
 
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 8);
+    // Boolean state only flips on threshold crossings, so no re-render churn.
+    const onScroll = () => {
+      const next = window.scrollY > 16;
+      setScrolled((prev) => (prev === next ? prev : next));
+    };
     onScroll();
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
@@ -53,8 +57,8 @@ export default function TopNav({ username, disableUserFetch = false }) {
     <header
       className={`sticky top-0 z-50 backdrop-blur-xl border-b transition-all duration-300 ${
         scrolled
-          ? 'bg-white/90 dark:bg-slate-950/90 border-slate-200/80 dark:border-slate-800/80 shadow-[0_4px_24px_-12px_rgba(15,23,42,0.18)] dark:shadow-[0_4px_24px_-12px_rgba(0,0,0,0.55)]'
-          : 'bg-white/70 dark:bg-slate-950/70 border-slate-200/60 dark:border-slate-800/60'
+          ? 'bg-white/85 dark:bg-slate-950/85 border-slate-200/70 dark:border-slate-800/70 shadow-[0_10px_30px_-15px_rgba(15,23,42,0.22)] dark:shadow-[0_10px_30px_-15px_rgba(0,0,0,0.65)]'
+          : 'bg-white/45 dark:bg-slate-950/45 border-transparent'
       }`}
     >
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -65,7 +69,9 @@ export default function TopNav({ username, disableUserFetch = false }) {
             className="flex items-center gap-2.5 text-lg font-bold text-slate-900 dark:text-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 rounded-lg group fx-enter-down"
             style={{ '--fd': '0.02s' }}
           >
-            <div className="w-8 h-8 rounded-xl bg-brand-600 dark:bg-brand-500 flex items-center justify-center text-white font-black text-sm shadow-md shadow-brand-500/20 group-hover:scale-105 transition-transform">
+            <div className={`w-8 h-8 rounded-xl bg-brand-600 dark:bg-brand-500 flex items-center justify-center text-white font-black text-sm shadow-md shadow-brand-500/20 transition-transform duration-300 ${
+              scrolled ? 'scale-95' : 'scale-100 group-hover:scale-105'
+            }`}>
               AI
             </div>
             <span className="tracking-tight font-extrabold">AI Interviewer</span>
