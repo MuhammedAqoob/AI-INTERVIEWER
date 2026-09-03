@@ -61,6 +61,19 @@ export default function InterviewRoomPage() {
     }
   };
 
+  const handleDeleteAndLeave = async () => {
+    setActionLoading(true);
+    try {
+      await interview.delete(sessionId);
+      router.push('/dashboard');
+    } catch (err) {
+      setError(err.message || 'Failed to delete session.');
+    } finally {
+      setActionLoading(false);
+      setShowLeaveModal(false);
+    }
+  };
+
   const handleRetake = async () => {
     setActionLoading(true);
     try {
@@ -252,7 +265,7 @@ export default function InterviewRoomPage() {
         open={showLeaveModal}
         onClose={() => setShowLeaveModal(false)}
         title="Leave Interview?"
-        description="Pause to resume later, or complete now to generate your evaluation and finish the interview."
+        description="Pause to resume later, complete to get your evaluation, or delete to remove this session entirely."
       >
         <div className="flex flex-col sm:flex-row gap-2 justify-end mt-6">
           <Button
@@ -288,6 +301,15 @@ export default function InterviewRoomPage() {
             loading={actionLoading}
           >
             Complete & Leave
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={handleDeleteAndLeave}
+            loading={actionLoading}
+            className="text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950 border-rose-200 dark:border-rose-800"
+          >
+            Delete & Leave
           </Button>
         </div>
       </Modal>

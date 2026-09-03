@@ -9,6 +9,7 @@ const { randomUUID } = require('crypto');
 
 const processing = new Set();
 const DAY_LIMIT = 5;
+const MAX_SESSIONS = 15;
 const answerClaimTtl = () => Number.parseInt(process.env.ANSWER_CLAIM_TTL_MS, 10) || 90000;
 
 function today() { const d = new Date(); return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())); }
@@ -39,6 +40,8 @@ async function claimDailyStart(userId) {
 }
 async function createSession(userId, input, firstQuestion, resumeSummary, openingQuestion) {
   await claimDailyStart(userId);
+  const sessionCount = await prisma.interviewSession.count({ where: { userId } });
+  if (sessionCount >= MAX_SESSIONS) throw new AppError(`You have reached the maximum of ${MAX_SESSIONS} interview sessions. Please delete an old session from your history before starting a new one.`, 400);
   return prisma.interviewSession.create({ data: { userId, interviewType: input.interviewType, branch: input.branch || null, questionLimit: input.questionLimit, currentQuestion: firstQuestion, currentDifficulty: firstQuestion.difficulty, resumeSummary: resumeSummary || null, openingQuestionContent: openingQuestion?.content || null, openingQuestionDifficulty: openingQuestion?.difficulty || null } });
 }
 async function getUsedOpeningQuestions(userId, interviewType, branch) {

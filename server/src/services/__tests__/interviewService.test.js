@@ -9,6 +9,7 @@ jest.mock('../../config/database', () => ({
   interviewSession: {
     findUnique: jest.fn(),
     findMany: jest.fn(),
+    count: jest.fn().mockResolvedValue(0),
     create: jest.fn(),
     update: jest.fn(),
     updateMany: jest.fn(),
