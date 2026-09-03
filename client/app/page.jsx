@@ -4,6 +4,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import TopNav from '../components/TopNav';
+import Reveal from '../components/motion';
 import { Button, Card, Badge } from '../components/ui';
 import { auth } from '../lib/api';
 
@@ -82,9 +83,10 @@ function SectionDivider() {
 /* ─────────────────────────────────────────────
    Hero Product Mockup
    ───────────────────────────────────────────── */
-function HeroMockup() {
+function HeroMockup({ variant = 'load' }) {
+  const staged = variant === 'load';
   return (
-    <div className="relative mx-auto max-w-lg w-full">
+    <div className={`relative mx-auto max-w-lg w-full ${staged ? 'fx-enter-zoom' : ''}`} style={staged ? { '--fd': '0.08s' } : undefined}>
       {/* Glow behind card */}
       <div className="absolute -inset-4 bg-gradient-to-br from-brand-500/10 via-brand-400/5 to-transparent rounded-3xl blur-2xl dark:from-brand-500/10 dark:via-brand-400/5" />
 
@@ -106,7 +108,7 @@ function HeroMockup() {
         {/* Mockup messages */}
         <div className="p-5 space-y-4">
           {/* AI question */}
-          <div className="flex gap-3">
+          <div className={`flex gap-3 ${staged ? 'fx-enter' : ''}`} style={staged ? { '--fd': '0.4s' } : undefined}>
             <div className="w-7 h-7 rounded-full bg-brand-600 flex items-center justify-center flex-shrink-0 mt-0.5">
               <span className="text-white text-[9px] font-bold">AI</span>
             </div>
@@ -118,7 +120,7 @@ function HeroMockup() {
           </div>
 
           {/* User answer */}
-          <div className="flex gap-3 justify-end">
+          <div className={`flex gap-3 justify-end ${staged ? 'fx-enter' : ''}`} style={staged ? { '--fd': '0.6s' } : undefined}>
             <div className="bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl rounded-tr-sm px-4 py-2.5 max-w-[85%]">
               <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
                 TCP is connection-oriented and ensures reliable delivery with ordering, while UDP is connectionless and faster but doesn&apos;t guarantee delivery...
@@ -132,10 +134,10 @@ function HeroMockup() {
           </div>
 
           {/* Analytics bar */}
-          <div className="bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3">
+          <div className={`bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 ${staged ? 'fx-enter' : ''}`} style={staged ? { '--fd': '0.82s' } : undefined}>
             <div className="flex items-center justify-between mb-2">
               <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Score</span>
-              <Badge variant="success" className="text-[10px]">82 / 100</Badge>
+              <span className="inline-block fx-enter-pop" style={{ '--fd': '1.15s' }}><Badge variant="success" className="text-[10px]">82 / 100</Badge></span>
             </div>
             <div className="grid grid-cols-5 gap-2">
               {[
@@ -144,12 +146,12 @@ function HeroMockup() {
                 { label: 'Relevance', val: 90 },
                 { label: 'Grammar', val: 80 },
                 { label: 'Confidence', val: 75 },
-              ].map((m) => (
+              ].map((m, idx) => (
                 <div key={m.label} className="text-center">
                   <div className="h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden mb-1">
                     <div
-                      className="h-full bg-brand-500 dark:bg-brand-400 rounded-full"
-                      style={{ width: `${m.val}%` }}
+                      className={`h-full bg-brand-500 dark:bg-brand-400 rounded-full ${staged ? 'bar-fill' : ''}`}
+                      style={{ width: `${m.val}%`, '--fd': staged ? `${(1.0 + idx * 0.07).toFixed(2)}s` : '0s' }}
                     />
                   </div>
                   <span className="text-[9px] text-slate-400 dark:text-slate-500">{m.label}</span>
@@ -175,7 +177,7 @@ function FeatureCard({ icon, title, description, color = 'brand' }) {
   };
 
   return (
-    <div className="group p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-lg dark:hover:shadow-slate-900/50 transition-all duration-300">
+    <div className="group h-full p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-lg dark:hover:shadow-slate-900/50 hover:-translate-y-1 transition-all duration-300">
       <div className={`w-10 h-10 rounded-xl border ${colorMap[color]} flex items-center justify-center mb-4 transition-transform duration-300 group-hover:scale-110`}>
         {icon}
       </div>
@@ -190,8 +192,8 @@ function FeatureCard({ icon, title, description, color = 'brand' }) {
    ───────────────────────────────────────────── */
 function InterviewTypeCard({ icon, title, description, badge, badgeVariant }) {
   return (
-    <div className="flex items-start gap-4 p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 hover:border-slate-300 dark:hover:border-slate-700 transition-all duration-300">
-      <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 flex items-center justify-center flex-shrink-0">
+    <div className="group h-full flex items-start gap-4 p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md hover:-translate-y-1 transition-all duration-300">
+      <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 flex items-center justify-center flex-shrink-0 transition-all duration-300 group-hover:scale-110 group-hover:bg-slate-200/80 dark:group-hover:bg-slate-700/80 group-hover:text-slate-800 dark:group-hover:text-slate-200">
         {icon}
       </div>
       <div className="min-w-0">
@@ -258,19 +260,19 @@ export default function Home() {
             {/* Left: Copy */}
             <div className="space-y-8 text-center lg:text-left">
               {/* Eyebrow */}
-              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-brand-50 dark:bg-brand-950/50 border border-brand-200/60 dark:border-brand-800/60">
+              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-brand-50 dark:bg-brand-950/50 border border-brand-200/60 dark:border-brand-800/60 fx-enter" style={{ '--fd': '0s' }}>
                 <span className="w-1.5 h-1.5 rounded-full bg-brand-500 animate-pulse" />
                 <span className="text-xs font-semibold text-brand-700 dark:text-brand-300">AI-Powered Interview Practice</span>
               </div>
 
               {/* Headline */}
               <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight leading-[1.1]">
-                Practice like it&apos;s{' '}
-                <span className="text-brand-600 dark:text-brand-400">the real interview.</span>
+                <span className="block fx-enter" style={{ '--fd': '0.1s' }}>Practice like it&apos;s</span>
+                <span className="block fx-enter bg-gradient-to-r from-brand-600 to-brand-500 dark:from-brand-400 dark:to-brand-300 bg-clip-text text-transparent" style={{ '--fd': '0.22s' }}>the real interview.</span>
               </h1>
 
               {/* Subhead */}
-              <p className="text-base sm:text-lg text-slate-500 dark:text-slate-400 max-w-xl mx-auto lg:mx-0 leading-relaxed">
+              <p className="text-base sm:text-lg text-slate-500 dark:text-slate-400 max-w-xl mx-auto lg:mx-0 leading-relaxed fx-enter" style={{ '--fd': '0.34s' }}>
                 Real-time AI interviews with adaptive follow-ups, instant scoring across 10 competencies, and personalized &ldquo;better answer&rdquo; feedback after every turn.
               </p>
 
@@ -280,7 +282,8 @@ export default function Home() {
                   variant="primary"
                   size="lg"
                   onClick={handleTakeInterview}
-                  className="px-8 py-3.5 text-base shadow-lg shadow-brand-500/20"
+                  style={{ '--fd': '0.46s' }}
+                  className="px-8 py-3.5 text-base shadow-lg shadow-brand-500/20 fx-enter-pop"
                 >
                   Start an Interview
                   <span className="ml-1">{Icons.arrow}</span>
@@ -291,7 +294,8 @@ export default function Home() {
                     variant="outline"
                     size="lg"
                     onClick={() => router.push('/dashboard')}
-                    className="px-8 py-3.5 text-base"
+                    style={{ '--fd': '0.58s' }}
+                    className="px-8 py-3.5 text-base fx-enter-pop"
                   >
                     View Dashboard
                   </Button>
@@ -300,7 +304,8 @@ export default function Home() {
                     variant="outline"
                     size="lg"
                     onClick={() => router.push('/register')}
-                    className="px-8 py-3.5 text-base"
+                    style={{ '--fd': '0.58s' }}
+                    className="px-8 py-3.5 text-base fx-enter-pop"
                   >
                     Sign Up Free
                   </Button>
@@ -308,7 +313,7 @@ export default function Home() {
               </div>
 
               {/* Trust indicators */}
-              <div className="flex items-center justify-center lg:justify-start gap-6 text-xs text-slate-400 dark:text-slate-500">
+              <div className="flex items-center justify-center lg:justify-start gap-6 text-xs text-slate-400 dark:text-slate-500 fx-enter" style={{ '--fd': '0.7s' }}>
                 <span className="flex items-center gap-1.5">{Icons.check} <span>10-point skill matrix</span></span>
                 <span className="flex items-center gap-1.5">{Icons.check} <span>Adaptive difficulty</span></span>
                 <span className="flex items-center gap-1.5">{Icons.check} <span>Instant feedback</span></span>
@@ -323,7 +328,7 @@ export default function Home() {
 
           {/* Mobile mockup (below copy on small screens) */}
           <div className="mt-12 lg:hidden">
-            <HeroMockup />
+            <Reveal delay={80}><HeroMockup variant="reveal" /></Reveal>
           </div>
         </div>
       </section>
@@ -333,40 +338,48 @@ export default function Home() {
       {/* ─── Capabilities ─── */}
       <section className="py-16 sm:py-24">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 space-y-12">
-          <div className="text-center space-y-3 max-w-2xl mx-auto">
+          <Reveal className="text-center space-y-3 max-w-2xl mx-auto">
             <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100">
               Everything you need to ace your interview
             </h2>
             <p className="text-sm sm:text-base text-slate-500 dark:text-slate-400">
               From question generation to performance analytics — the complete toolkit for interview preparation.
             </p>
-          </div>
+          </Reveal>
 
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
-            <FeatureCard
-              icon={Icons.brain}
-              title="Adaptive AI Questions"
-              description="Dynamic follow-ups tailored to your answer depth, technical domain, and chosen branch."
-              color="brand"
-            />
-            <FeatureCard
-              icon={Icons.document}
-              title="Resume-Based Interviews"
-              description="Upload a resume to receive personalized questions based on your specific experience and skills."
-              color="purple"
-            />
-            <FeatureCard
-              icon={Icons.chart}
-              title="Skill Analytics"
-              description="Track performance across 10 competencies — technical depth, clarity, confidence, and more."
-              color="emerald"
-            />
-            <FeatureCard
-              icon={Icons.lightbulb}
-              title="Better Answer Feedback"
-              description="Review stronger example answers after every turn to learn optimal phrasing and depth."
-              color="amber"
-            />
+            <Reveal delay={0} className="h-full">
+              <FeatureCard
+                icon={Icons.brain}
+                title="Adaptive AI Questions"
+                description="Dynamic follow-ups tailored to your answer depth, technical domain, and chosen branch."
+                color="brand"
+              />
+            </Reveal>
+            <Reveal delay={90} className="h-full">
+              <FeatureCard
+                icon={Icons.document}
+                title="Resume-Based Interviews"
+                description="Upload a resume to receive personalized questions based on your specific experience and skills."
+                color="purple"
+              />
+            </Reveal>
+            <Reveal delay={180} className="h-full">
+              <FeatureCard
+                icon={Icons.chart}
+                title="Skill Analytics"
+                description="Track performance across 10 competencies — technical depth, clarity, confidence, and more."
+                color="emerald"
+              />
+            </Reveal>
+            <Reveal delay={270} className="h-full">
+              <FeatureCard
+                icon={Icons.lightbulb}
+                title="Better Answer Feedback"
+                description="Review stronger example answers after every turn to learn optimal phrasing and depth."
+                color="amber"
+              />
+            </Reveal>
           </div>
         </div>
       </section>
@@ -376,44 +389,52 @@ export default function Home() {
       {/* ─── Interview Types ─── */}
       <section className="py-16 sm:py-24">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 space-y-12">
-          <div className="text-center space-y-3 max-w-2xl mx-auto">
+          <Reveal className="text-center space-y-3 max-w-2xl mx-auto">
             <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100">
               One platform, every interview type
             </h2>
             <p className="text-sm sm:text-base text-slate-500 dark:text-slate-400">
               Choose the format that matches your target role. Each type is powered by specialized AI evaluation.
             </p>
-          </div>
+          </Reveal>
 
           <div className="grid sm:grid-cols-2 gap-4 max-w-3xl mx-auto">
-            <InterviewTypeCard
-              icon={Icons.tech}
-              title="Technical"
-              description="Branch-specific questions for Computer Science, Electronics, Mechanical, Civil, or Electrical engineering."
-              badge="5 Branches"
-              badgeVariant="brand"
-            />
-            <InterviewTypeCard
-              icon={Icons.hr}
-              title="HR"
-              description="Behavioral and situational interview questions to practice communication and professional presence."
-              badge="Behavioral"
-              badgeVariant="info"
-            />
-            <InterviewTypeCard
-              icon={Icons.aptitude}
-              title="Aptitude"
-              description="Problem-solving and analytical reasoning questions to sharpen your quantitative thinking."
-              badge="Analytical"
-              badgeVariant="warning"
-            />
-            <InterviewTypeCard
-              icon={Icons.resume}
-              title="Resume"
-              description="Upload your resume and receive personalized questions drawn directly from your experience."
-              badge="Personalized"
-              badgeVariant="success"
-            />
+            <Reveal delay={0} className="h-full">
+              <InterviewTypeCard
+                icon={Icons.tech}
+                title="Technical"
+                description="Branch-specific questions for Computer Science, Electronics, Mechanical, Civil, or Electrical engineering."
+                badge="5 Branches"
+                badgeVariant="brand"
+              />
+            </Reveal>
+            <Reveal delay={90} className="h-full">
+              <InterviewTypeCard
+                icon={Icons.hr}
+                title="HR"
+                description="Behavioral and situational interview questions to practice communication and professional presence."
+                badge="Behavioral"
+                badgeVariant="info"
+              />
+            </Reveal>
+            <Reveal delay={180} className="h-full">
+              <InterviewTypeCard
+                icon={Icons.aptitude}
+                title="Aptitude"
+                description="Problem-solving and analytical reasoning questions to sharpen your quantitative thinking."
+                badge="Analytical"
+                badgeVariant="warning"
+              />
+            </Reveal>
+            <Reveal delay={270} className="h-full">
+              <InterviewTypeCard
+                icon={Icons.resume}
+                title="Resume"
+                description="Upload your resume and receive personalized questions drawn directly from your experience."
+                badge="Personalized"
+                badgeVariant="success"
+              />
+            </Reveal>
           </div>
         </div>
       </section>
@@ -423,28 +444,38 @@ export default function Home() {
       {/* ─── How It Works ─── */}
       <section className="py-16 sm:py-24">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 space-y-12">
-          <div className="text-center space-y-3 max-w-2xl mx-auto">
+          <Reveal className="text-center space-y-3 max-w-2xl mx-auto">
             <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100">
               Three steps to start improving
             </h2>
-          </div>
+          </Reveal>
 
-          <div className="grid sm:grid-cols-3 gap-8 sm:gap-12 max-w-3xl mx-auto">
-            <StepCard
-              number="01"
-              title="Choose your interview"
-              description="Select your interview type, branch, and number of questions."
-            />
-            <StepCard
-              number="02"
-              title="Interview with AI"
-              description="Answer adaptive questions in real time as difficulty adjusts to your level."
-            />
-            <StepCard
-              number="03"
-              title="Review and improve"
-              description="Analyze scores, study better answers, and track your progress over time."
-            />
+          <div className="relative grid sm:grid-cols-3 gap-8 sm:gap-12 max-w-3xl mx-auto">
+            {/* Connecting line (sm+) — draws as the steps reveal */}
+            <Reveal variant="fade" delay={250} className="hidden sm:block absolute top-6 left-[16.66%] right-[16.66%] h-px pointer-events-none">
+              <div className="h-full w-full bg-gradient-to-r from-transparent via-brand-300 to-transparent dark:via-brand-700" />
+            </Reveal>
+            <Reveal delay={0} className="relative">
+              <StepCard
+                number="01"
+                title="Choose your interview"
+                description="Select your interview type, branch, and number of questions."
+              />
+            </Reveal>
+            <Reveal delay={140} className="relative">
+              <StepCard
+                number="02"
+                title="Interview with AI"
+                description="Answer adaptive questions in real time as difficulty adjusts to your level."
+              />
+            </Reveal>
+            <Reveal delay={280} className="relative">
+              <StepCard
+                number="03"
+                title="Review and improve"
+                description="Analyze scores, study better answers, and track your progress over time."
+              />
+            </Reveal>
           </div>
         </div>
       </section>
@@ -452,36 +483,45 @@ export default function Home() {
       {/* ─── Final CTA ─── */}
       <section className="py-16 sm:py-24">
         <div className="max-w-6xl mx-auto px-4 sm:px-6">
-          <div className="relative overflow-hidden rounded-3xl bg-slate-900 dark:bg-slate-900 border border-slate-800 px-8 py-16 sm:px-16 sm:py-20 text-center">
+          <Reveal className="relative overflow-hidden rounded-3xl bg-slate-900 dark:bg-slate-900 border border-slate-800 px-8 py-16 sm:px-16 sm:py-20 text-center">
             {/* Background glow */}
             <div className="absolute inset-0 bg-gradient-to-br from-brand-600/10 via-transparent to-brand-400/5 pointer-events-none" />
+            {/* Slow ambient orbs (decorative, md+ only) */}
+            <div aria-hidden className="absolute -top-32 -left-24 hidden md:block w-96 h-96 rounded-full bg-brand-500/10 blur-3xl fx-orb pointer-events-none" />
+            <div aria-hidden className="absolute -bottom-36 -right-24 hidden md:block w-96 h-96 rounded-full bg-brand-400/10 blur-3xl fx-orb pointer-events-none" style={{ animationDelay: '-9s' }} />
 
             <div className="relative space-y-6">
-              <h2 className="text-2xl sm:text-4xl font-extrabold tracking-tight text-white">
-                Ready to practice your next interview?
-              </h2>
-              <p className="text-sm sm:text-base text-slate-400 max-w-lg mx-auto">
-                Start a free AI-powered interview session and get instant, actionable feedback on your performance.
-              </p>
-              <div>
-                <Button
-                  variant="primary"
-                  size="lg"
-                  onClick={handleTakeInterview}
-                  className="px-10 py-4 text-base shadow-lg shadow-brand-500/25"
-                >
-                  Start an Interview
-                  <span className="ml-1">{Icons.arrow}</span>
-                </Button>
-              </div>
+              <Reveal variant="fade">
+                <h2 className="text-2xl sm:text-4xl font-extrabold tracking-tight text-white">
+                  Ready to practice your next interview?
+                </h2>
+              </Reveal>
+              <Reveal variant="fade" delay={120}>
+                <p className="text-sm sm:text-base text-slate-400 max-w-lg mx-auto">
+                  Start a free AI-powered interview session and get instant, actionable feedback on your performance.
+                </p>
+              </Reveal>
+              <Reveal variant="fade" delay={240}>
+                <div>
+                  <Button
+                    variant="primary"
+                    size="lg"
+                    onClick={handleTakeInterview}
+                    className="px-10 py-4 text-base shadow-lg shadow-brand-500/25 hover:-translate-y-0.5"
+                  >
+                    Start an Interview
+                    <span className="ml-1">{Icons.arrow}</span>
+                  </Button>
+                </div>
+              </Reveal>
             </div>
-          </div>
+          </Reveal>
         </div>
       </section>
 
       {/* ─── Footer ─── */}
       <footer className="mt-auto border-t border-slate-200/80 dark:border-slate-800/80 bg-white/50 dark:bg-slate-950/50 transition-colors">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500 dark:text-slate-400">
+        <Reveal variant="fade" className="max-w-6xl mx-auto px-4 sm:px-6 py-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500 dark:text-slate-400">
           <div className="flex items-center gap-2.5">
             <div className="w-6 h-6 rounded-lg bg-brand-600 text-white flex items-center justify-center text-[9px] font-black">
               AI
@@ -489,7 +529,7 @@ export default function Home() {
             <span className="font-bold text-slate-800 dark:text-slate-200">AI Interviewer</span>
           </div>
           <p>&copy; {new Date().getFullYear()} AI Interviewer. All rights reserved.</p>
-        </div>
+        </Reveal>
       </footer>
     </div>
   );

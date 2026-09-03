@@ -18,6 +18,14 @@ export default function TopNav({ username, disableUserFetch = false }) {
   const router = useRouter();
   const { resolvedTheme, toggleTheme, mounted } = useTheme();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 8);
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
   const [fetchedUsername, setFetchedUsername] = useState(null);
 
   useEffect(() => {
@@ -42,13 +50,20 @@ export default function TopNav({ username, disableUserFetch = false }) {
   };
 
   return (
-    <header className="sticky top-0 z-50 bg-white/80 dark:bg-slate-950/80 backdrop-blur-xl border-b border-slate-200/80 dark:border-slate-800/80 transition-colors">
+    <header
+      className={`sticky top-0 z-50 backdrop-blur-xl border-b transition-all duration-300 ${
+        scrolled
+          ? 'bg-white/90 dark:bg-slate-950/90 border-slate-200/80 dark:border-slate-800/80 shadow-[0_4px_24px_-12px_rgba(15,23,42,0.18)] dark:shadow-[0_4px_24px_-12px_rgba(0,0,0,0.55)]'
+          : 'bg-white/70 dark:bg-slate-950/70 border-slate-200/60 dark:border-slate-800/60'
+      }`}
+    >
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex h-16 items-center justify-between gap-4">
           {/* Logo */}
           <Link
             href="/"
-            className="flex items-center gap-2.5 text-lg font-bold text-slate-900 dark:text-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 rounded-lg group"
+            className="flex items-center gap-2.5 text-lg font-bold text-slate-900 dark:text-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 rounded-lg group fx-enter-down"
+            style={{ '--fd': '0.02s' }}
           >
             <div className="w-8 h-8 rounded-xl bg-brand-600 dark:bg-brand-500 flex items-center justify-center text-white font-black text-sm shadow-md shadow-brand-500/20 group-hover:scale-105 transition-transform">
               AI
@@ -57,7 +72,7 @@ export default function TopNav({ username, disableUserFetch = false }) {
           </Link>
 
           {/* Desktop Navigation */}
-          <nav className="hidden md:flex items-center gap-1 bg-slate-100/70 dark:bg-slate-900/60 backdrop-blur-md px-3 py-1 rounded-full border border-slate-200/60 dark:border-slate-800/80">
+          <nav className="hidden md:flex items-center gap-1 bg-slate-100/70 dark:bg-slate-900/60 backdrop-blur-md px-3 py-1 rounded-full border border-slate-200/60 dark:border-slate-800/80 fx-enter-down" style={{ '--fd': '0.12s' }}>
             {NAV_LINKS.map((link) => {
               const active = link.href === '/' ? pathname === '/' : pathname.startsWith(link.href);
               return (
@@ -67,7 +82,7 @@ export default function TopNav({ username, disableUserFetch = false }) {
                   className={`px-3.5 py-1.5 text-xs font-semibold rounded-full transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 ${
                     active
                       ? 'bg-brand-600 text-white dark:bg-brand-500 dark:text-white shadow-sm'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-200/50 dark:hover:bg-slate-800/50'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-200/50 dark:hover:bg-slate-800/50 hover:-translate-y-0.5'
                   }`}
                 >
                   {link.label}
@@ -77,7 +92,7 @@ export default function TopNav({ username, disableUserFetch = false }) {
           </nav>
 
           {/* Top Right Actions */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 fx-enter-down" style={{ '--fd': '0.22s' }}>
             {/* Theme Toggle Button */}
             <button
               onClick={toggleTheme}
@@ -148,7 +163,7 @@ export default function TopNav({ username, disableUserFetch = false }) {
 
         {/* Mobile Navigation Drawer */}
         {mobileMenuOpen && (
-          <nav className="md:hidden py-3 border-t border-slate-200/80 dark:border-slate-800/80 space-y-1 animate-in slide-in-from-top-2 duration-200">
+          <nav className="md:hidden py-3 border-t border-slate-200/80 dark:border-slate-800/80 space-y-1 fx-enter-down" style={{ '--fd': '0.02s' }}>
             {effectiveUsername && (
               <div className="px-3.5 py-1 text-xs text-slate-500 dark:text-slate-400">
                 Signed in as <span className="font-semibold text-slate-900 dark:text-slate-100">{effectiveUsername}</span>
