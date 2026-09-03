@@ -87,18 +87,6 @@ model InterviewAnswer {
   @@map("interview_answers")
 }
 
-model InterviewQuestionBank {
-  id            String  @id @default(uuid()) @db.Uuid
-  interviewType String  @map("interview_type") @db.VarChar(20)
-  branch        String? @db.VarChar(50)
-  difficulty    String  @db.VarChar(20)
-  question      String  @db.Text
-  isActive      Boolean @default(true) @map("is_active")
-
-  @@index([interviewType, branch, isActive])
-  @@map("interview_question_bank")
-}
-
 model DailyInterviewUsage {
   id                String   @id @default(uuid()) @db.Uuid
   userId            String   @map("user_id") @db.Uuid

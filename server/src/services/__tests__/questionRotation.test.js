@@ -4,10 +4,6 @@ const localQuestions = require('../questionProvider/localQuestions');
 // The core rotation logic lives in questionProvider/index.js.
 
 jest.mock('../../config/database', () => ({
-  interviewQuestionBank: {
-    count: jest.fn().mockResolvedValue(0),
-    findFirst: jest.fn().mockResolvedValue(null),
-  },
   interviewSession: {
     findMany: jest.fn().mockResolvedValue([]),
     findUnique: jest.fn(),
@@ -21,15 +17,12 @@ jest.mock('../../config/database', () => ({
   $transaction: jest.fn(),
 }));
 
-const prisma = require('../../config/database');
 const { getRandomQuestion } = require('../questionProvider');
 const { INTERVIEW_TYPES } = require('../../constants/interviewTypes');
 
 describe('question rotation – exclusion', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    prisma.interviewQuestionBank.count.mockResolvedValue(0);
-    prisma.interviewQuestionBank.findFirst.mockResolvedValue(null);
   });
 
   test('returns a question from the correct branch pool for Technical', async () => {
@@ -86,8 +79,6 @@ describe('question rotation – exclusion', () => {
 describe('question rotation – branch independence', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    prisma.interviewQuestionBank.count.mockResolvedValue(0);
-    prisma.interviewQuestionBank.findFirst.mockResolvedValue(null);
   });
 
   test('CSE exclusion does not affect ECE pool', async () => {
