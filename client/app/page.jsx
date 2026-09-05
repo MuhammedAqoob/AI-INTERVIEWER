@@ -100,7 +100,7 @@ function HeroMockup({ mode = 'load' }) {
   // Every reveal — question/answer words, the evaluation strip, the score — is
   // timed by CSS on the SAME stylesheet timeline, so the pieces can never drift
   // apart (no JS timers gate any of them). The only JS timer restarts the demo
-  // each 9s by re-mounting the message area (key={cycle}).
+  // each 10s by re-mounting the message area (key={cycle}).
   // Reduced motion: no timers run and the CSS animations are disabled, so the
   // static final state stays visible immediately.
   const [cycle, setCycle] = useState(0);
@@ -108,7 +108,7 @@ function HeroMockup({ mode = 'load' }) {
   useEffect(() => {
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     if (gated && !playing) return; // wait until the card actually enters the viewport
-    const t = setTimeout(() => setCycle((c) => c + 1), 9000); // replay the demo
+    const t = setTimeout(() => setCycle((c) => c + 1), 10000); // replay the demo
     return () => clearTimeout(t);
   }, [cycle, gated, playing]);
 
@@ -158,7 +158,7 @@ function HeroMockup({ mode = 'load' }) {
         </div>
 
         {/* Mockup messages — keyed by cycle so the whole demo replays on loop */}
-        <div key={cycle} className="px-6 pt-7 pb-9">
+        <div key={cycle} className="px-6 pt-7 pb-5">
           {/* AI question — card materializes quickly, then its text types in word by word */}
           <div className={`flex gap-3 ${c('fx-materialize', 'demo-child demo-child-materialize')}`} style={fd('0.15s')}>
             <div className="w-8 h-8 rounded-full bg-brand-600 flex items-center justify-center flex-shrink-0">
@@ -203,7 +203,7 @@ function HeroMockup({ mode = 'load' }) {
               <div className="bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Score</span>
-                  <span className={`inline-block ${c('fx-enter-pop', 'demo-child demo-child-pop')}`} style={fd('7.3s')}>
+                  <span className={`inline-block ${c('fx-enter-pop', 'demo-child demo-child-pop')}`} style={fd('8.3s')}>
                     <Badge variant="success" className="text-[10px]">82 / 100</Badge>
                   </span>
                 </div>
@@ -219,7 +219,7 @@ function HeroMockup({ mode = 'load' }) {
                       <div className="h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden mb-1">
                         <div
                           className={`h-full bg-brand-500 dark:bg-brand-400 rounded-full ${c('bar-fill', 'demo-bar')}`}
-                          style={{ width: `${m.val}%`, '--fd': `${(6.9 + idx * 0.05).toFixed(2)}s` }}
+                          style={{ width: `${m.val}%`, '--fd': `${(8 + idx * 0.05).toFixed(2)}s` }}
                         />
                       </div>
                       <span className="text-[9px] text-slate-400 dark:text-slate-500">{m.label}</span>

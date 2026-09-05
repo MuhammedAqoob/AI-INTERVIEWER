@@ -123,25 +123,25 @@
   from { opacity: 0; }
   to   { opacity: 1; }
 }
-/* AI evaluation strip — one 9s-cycle animation: it occupies no space until
-   the answer has finished typing (opens ~5.2s), stays open ~1.25s, then
-   closes BEFORE the score panel appears (~6.5s). max-height is clipped so the
+/* AI evaluation strip — one 10s-cycle animation: it occupies no space until
+   the answer has finished typing (opens ~5.2s), stays open ~2.2s, then
+   closes BEFORE the score panel appears (~7.6s). max-height is clipped so the
    row leaves no gap while closed. Shares the cycle length of the demo. */
 @keyframes fx-eval-cycle {
-  0%, 57.6%   { opacity: 0; max-height: 0; }
-  58.4%       { opacity: 1; max-height: 3rem; }
-  71.4%       { opacity: 1; max-height: 3rem; }
-  72.4%, 100% { opacity: 0; max-height: 0; }
+  0%, 51.5%   { opacity: 0; max-height: 0; }
+  52.5%       { opacity: 1; max-height: 3rem; }
+  74%         { opacity: 1; max-height: 3rem; }
+  75.5%, 100% { opacity: 0; max-height: 0; }
 }
 /* Analytics panel — deliberately does NOT reserve space up front. It stays
    collapsed (no height) while the question, answer and evaluation play, so
    there is never an empty gap under the conversation. Only when the
-   evaluation finishes (~6.6s into the 9s cycle) does the panel open and the
+   evaluation finishes (~7.7s into the 10s cycle) does the panel open and the
    card grow to fit the score and bars. max-height is clipped while closed. */
 @keyframes fx-panel-cycle {
-  0%, 73.4%   { max-height: 0; opacity: 0; }
-  74%         { max-height: 0; opacity: 1; }
-  79.5%       { max-height: 8rem; }
+  0%, 76.5%   { max-height: 0; opacity: 0; }
+  77%         { max-height: 0; opacity: 1; }
+  81.5%       { max-height: 8rem; }
   100%        { max-height: 8rem; opacity: 1; }
 }
 
