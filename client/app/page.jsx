@@ -144,7 +144,7 @@ function HeroMockup({ mode = 'load' }) {
 
       <div className="relative bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl overflow-hidden">
         {/* Mockup header */}
-        <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
+        <div className="flex items-center justify-between px-6 py-3.5 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
           <div className="flex items-center gap-2">
             <div className="w-6 h-6 rounded-lg bg-brand-600 flex items-center justify-center">
               <span className="text-white text-[9px] font-black">AI</span>
@@ -158,13 +158,13 @@ function HeroMockup({ mode = 'load' }) {
         </div>
 
         {/* Mockup messages — keyed by cycle so the whole demo replays on loop */}
-        <div key={cycle} className="p-5">
+        <div key={cycle} className="px-6 pt-7 pb-9">
           {/* AI question — card materializes quickly, then its text types in word by word */}
           <div className={`flex gap-3 ${c('fx-materialize', 'demo-child demo-child-materialize')}`} style={fd('0.15s')}>
-            <div className="w-7 h-7 rounded-full bg-brand-600 flex items-center justify-center flex-shrink-0 mt-0.5">
-              <span className="text-white text-[9px] font-bold">AI</span>
+            <div className="w-8 h-8 rounded-full bg-brand-600 flex items-center justify-center flex-shrink-0">
+              <span className="text-white text-[10px] font-bold">AI</span>
             </div>
-            <div className="bg-brand-50 dark:bg-brand-950/40 border border-brand-200/50 dark:border-brand-800/50 rounded-xl rounded-tl-sm px-4 py-2.5 max-w-[85%]">
+            <div className="bg-brand-50 dark:bg-brand-950/40 border border-brand-200/50 dark:border-brand-800/50 rounded-2xl rounded-tl-md px-5 py-3.5 max-w-[85%]">
               <p className="text-sm text-slate-800 dark:text-slate-200 leading-relaxed">
                 {typed(DEMO_QUESTION, 0.45, 0.1)}
               </p>
@@ -172,14 +172,14 @@ function HeroMockup({ mode = 'load' }) {
           </div>
 
           {/* User answer — card materializes quickly, then its text types in word by word */}
-          <div className="flex gap-3 justify-end mt-4">
-            <div className={`bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl rounded-tr-sm px-4 py-2.5 max-w-[85%] ${c('fx-materialize', 'demo-child demo-child-materialize')}`} style={fd('2.6s')}>
+          <div className="flex gap-3 justify-end mt-7">
+            <div className={`bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl rounded-tr-md px-5 py-3.5 max-w-[85%] ${c('fx-materialize', 'demo-child demo-child-materialize')}`} style={fd('2.6s')}>
               <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
                 {typed(DEMO_ANSWER, 2.85, 0.11)}
               </p>
             </div>
-            <div className={`w-7 h-7 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center flex-shrink-0 mt-0.5 ${c('fx-fade-in', 'demo-child demo-child-fade')}`} style={fd('2.7s')}>
-              <svg className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <div className={`w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center flex-shrink-0 ${c('fx-fade-in', 'demo-child demo-child-fade')}`} style={fd('2.7s')}>
+              <svg className="w-4 h-4 text-slate-500 dark:text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0" />
               </svg>
             </div>
@@ -188,10 +188,10 @@ function HeroMockup({ mode = 'load' }) {
           {/* AI evaluation state — reserved strip that opens only while the AI
               analyses the answer (CSS-timed on the same timeline as the text,
               so it always appears right after typing and closes before the score) */}
-          <div className="mt-4">
+          <div className="mt-7">
             <div className={c('fx-eval', 'demo-eval')}>
-              <div className="flex items-center gap-2.5 pb-4">
-                <span className="w-1.5 h-1.5 rounded-full bg-brand-500 animate-pulse" />
+              <div className="flex items-center gap-2.5 pb-5">
+                <span className="w-2 h-2 rounded-full bg-brand-500 animate-pulse" />
                 <span className="text-xs text-slate-500 dark:text-slate-400">AI is evaluating your answer...</span>
               </div>
             </div>
