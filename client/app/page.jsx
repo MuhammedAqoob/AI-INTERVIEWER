@@ -196,32 +196,36 @@ function HeroMockup({ mode = 'load' }) {
               </div>
             </div>
 
-            {/* Analytics — appears after the evaluation, then bars grow, then the score pops */}
-            <div className={`bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 ${c('fx-enter', 'demo-child')}`} style={fd('6.7s')}>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Score</span>
-                <span className={`inline-block ${c('fx-enter-pop', 'demo-child demo-child-pop')}`} style={fd('7.3s')}>
-                  <Badge variant="success" className="text-[10px]">82 / 100</Badge>
-                </span>
-              </div>
-              <div className="grid grid-cols-5 gap-2">
-                {[
-                  { label: 'Depth', val: 85 },
-                  { label: 'Clarity', val: 78 },
-                  { label: 'Relevance', val: 90 },
-                  { label: 'Grammar', val: 80 },
-                  { label: 'Confidence', val: 75 },
-                ].map((m, idx) => (
-                  <div key={m.label} className="text-center">
-                    <div className="h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden mb-1">
-                      <div
-                        className={`h-full bg-brand-500 dark:bg-brand-400 rounded-full ${c('bar-fill', 'demo-bar')}`}
-                        style={{ width: `${m.val}%`, '--fd': `${(6.9 + idx * 0.05).toFixed(2)}s` }}
-                      />
+            {/* Analytics — opens only AFTER the evaluation finishes (the panel
+                occupies no space until then), so the card grows here instead of
+                leaving a blank gap under the evaluation. */}
+            <div className={c('fx-panel', 'demo-panel')}>
+              <div className="bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Score</span>
+                  <span className={`inline-block ${c('fx-enter-pop', 'demo-child demo-child-pop')}`} style={fd('7.3s')}>
+                    <Badge variant="success" className="text-[10px]">82 / 100</Badge>
+                  </span>
+                </div>
+                <div className="grid grid-cols-5 gap-2">
+                  {[
+                    { label: 'Depth', val: 85 },
+                    { label: 'Clarity', val: 78 },
+                    { label: 'Relevance', val: 90 },
+                    { label: 'Grammar', val: 80 },
+                    { label: 'Confidence', val: 75 },
+                  ].map((m, idx) => (
+                    <div key={m.label} className="text-center">
+                      <div className="h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden mb-1">
+                        <div
+                          className={`h-full bg-brand-500 dark:bg-brand-400 rounded-full ${c('bar-fill', 'demo-bar')}`}
+                          style={{ width: `${m.val}%`, '--fd': `${(6.9 + idx * 0.05).toFixed(2)}s` }}
+                        />
+                      </div>
+                      <span className="text-[9px] text-slate-400 dark:text-slate-500">{m.label}</span>
                     </div>
-                    <span className="text-[9px] text-slate-400 dark:text-slate-500">{m.label}</span>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
             </div>
           </div>
