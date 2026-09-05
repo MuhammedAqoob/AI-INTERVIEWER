@@ -27,9 +27,16 @@ function sessionMetrics(answers, interviewType) {
   }
   return { overallAverage: values.length ? Math.round(values.reduce((sum, v) => sum + v, 0) / values.length * 100) / 100 : 0, turnCount: (answers || []).length, analyticsSamples: samples };
 }
-function serialize(session, includeAnswers = false) {
+function serialize(session, includeAnswers = false, forList = false) {
   const metrics = sessionMetrics(session.answers, session.interviewType);
-  const base = { id: session.id, sessionId: session.id, interviewType: session.interviewType, branch: session.branch, status: session.status, questionLimit: session.questionLimit, currentQuestionNumber: session.currentQuestionNumber, currentQuestion: session.currentQuestion, difficulty: session.currentDifficulty, rollingSummary: session.rollingSummary, resumeSummary: session.resumeSummary, startedAt: session.startedAt, endedAt: session.endedAt, totalQuestions: session.answers?.length || 0, overallAverage: metrics.overallAverage, turnCount: metrics.turnCount, analyticsSamples: metrics.analyticsSamples };
+  const base = { id: session.id, sessionId: session.id, interviewType: session.interviewType, branch: session.branch, status: session.status, questionLimit: session.questionLimit, currentQuestionNumber: session.currentQuestionNumber, difficulty: session.currentDifficulty, startedAt: session.startedAt, endedAt: session.endedAt, totalQuestions: session.answers?.length || 0, overallAverage: metrics.overallAverage, turnCount: metrics.turnCount, analyticsSamples: metrics.analyticsSamples };
+  // List responses (history/dashboard) don't need the heavy conversation fields;
+  // they are kept for detail/session responses where the UI reads them.
+  if (!forList) {
+    base.currentQuestion = session.currentQuestion;
+    base.rollingSummary = session.rollingSummary;
+    base.resumeSummary = session.resumeSummary;
+  }
   if (includeAnswers) base.answers = (session.answers || []).map((a) => ({ ...a, analytics: a.analytics || {} }));
   return base;
 }
@@ -202,7 +209,31 @@ async function getSessionById(userId, id) {
   }
   return result;
 }
-async function getSessionsForUser(userId) { const rows = await prisma.interviewSession.findMany({ where: { userId }, include: { answers: { select: { id: true, analytics: true } } }, orderBy: { updatedAt: 'desc' } }); return rows.map((s) => serialize(s)); }
+async function getSessionsForUser(userId) {
+  // Explicit projection: the History/Dashboard list only needs these columns.
+  // The heavy Text/Json fields (rollingSummary, resumeSummary, currentQuestion,
+  // strengths, weaknesses, learningRoadmap) are intentionally not fetched here;
+  // detail endpoints (getSessionById) still load them.
+  // Per-answer analytics stays: it feeds overallAverage/analyticsSamples, which
+  // are not stored per session anywhere else.
+  const rows = await prisma.interviewSession.findMany({
+    where: { userId },
+    select: {
+      id: true,
+      interviewType: true,
+      branch: true,
+      status: true,
+      questionLimit: true,
+      currentQuestionNumber: true,
+      currentDifficulty: true,
+      startedAt: true,
+      endedAt: true,
+      answers: { select: { analytics: true } },
+    },
+    orderBy: { updatedAt: 'desc' },
+  });
+  return rows.map((s) => serialize(s, false, true));
+}
 async function getHistory(userId) { return getSessionsForUser(userId); }
 async function deleteSession(userId, id) { await owned(userId, id); await prisma.interviewSession.delete({ where: { id } }); return { sessionId: id, deleted: true }; }
 module.exports = { startInterview, startResumeInterview, retakeInterview, submitAnswer, pause, resume, endSession, getSessionById, getSessionDetails: getSessionById, getSessionsForUser, getHistory, deleteSession };

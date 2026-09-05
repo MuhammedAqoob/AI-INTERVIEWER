@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const compression = require('compression');
 const cookieParser = require('cookie-parser');
 const helmet = require('helmet');
 const morgan = require('morgan');
@@ -17,6 +18,9 @@ const PORT = process.env.PORT || 5000;
 
 // Middleware
 app.use(cors(corsOptions));
+// gzip JSON/text responses above the default 1 KB threshold. Transparent to
+// clients (fetch/Accept-Encoding), so response parsing and cookies are unaffected.
+app.use(compression());
 app.use(express.json({ limit: '20kb' }));
 app.use(cookieParser());
 app.use(helmet());
