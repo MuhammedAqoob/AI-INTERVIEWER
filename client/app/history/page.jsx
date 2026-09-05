@@ -4,7 +4,7 @@ import { useEffect, useState, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useSessions } from '../../lib/useSessions';
-import { DeleteDialog, Button, Card, Badge } from '../../components/ui';
+import { DeleteDialog, Button, Card, Badge, Spinner } from '../../components/ui';
 import TopNav from '../../components/TopNav';
 import { useAuth } from '../../components/AuthProvider';
 import { formatDate, titleCase } from '../../lib/format';
@@ -243,17 +243,24 @@ export default function HistoryPage() {
   const [pendingDelete, setPendingDelete] = useState(null);
   const [authRequired, setAuthRequired] = useState(false);
   const loadedRef = useRef(false);
+  const prevStatusRef = useRef(status);
 
   // Guests never hit the (protected) history endpoint — they get a friendly
   // login-required state instead of the backend's raw 401 message.
   useEffect(() => {
+    const prev = prevStatusRef.current;
+    prevStatusRef.current = status;
     if (status === 'guest') {
       setAuthRequired(true);
       return;
     }
     if (status === 'pending') return; // let the shared auth check finish
+    // A guest→authenticated transition (login completing while this page is
+    // mounted) clears a stale auth-required flag. A mid-session 401 keeps it:
+    // that flag comes from errorStatus while status stays 'authenticated', and
+    // the previous status is not 'guest', so it is preserved here.
+    if (prev === 'guest' && authRequired) setAuthRequired(false);
     // authenticated (or unknown-but-reachable): try loading the list once
-    if (authRequired) setAuthRequired(false);
     if (!loadedRef.current) {
       loadedRef.current = true;
       load();
@@ -300,6 +307,12 @@ export default function HistoryPage() {
   const visibleSessions = showAll ? sortedSessions : sortedSessions.slice(0, 10);
   const hiddenCount = sortedSessions.length - 10;
 
+  // Data skeletons/content are only meaningful once the shared auth check proves
+  // the user is authenticated. Guests get the login card directly; while the
+  // check is still pending we show a small neutral state instead of protected-
+  // data skeletons (which would otherwise flash — and linger — for visitors).
+  const isGuest = status === 'guest' || authRequired;
+
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors pb-16">
       <TopNav />
@@ -335,8 +348,8 @@ export default function HistoryPage() {
           </div>
         )}
 
-        {/* ─── 2. Summary Stats ─── */}
-        {loading ? (
+        {/* ─── 2. Summary Stats (data-driven: only after auth proves authenticated) ─── */}
+        {isGuest || status === 'pending' ? null : loading ? (
           <section className="grid grid-cols-2 sm:grid-cols-4 gap-4" aria-busy="true" aria-label="Loading your stats">
             <StatSkeletonCard />
             <StatSkeletonCard />
@@ -375,7 +388,7 @@ export default function HistoryPage() {
         )}
 
         {/* ─── 3. Session List ─── */}
-        {authRequired ? (
+        {isGuest ? (
           <Card className="max-w-lg mx-auto p-10 text-center space-y-4">
             <div className="w-16 h-16 bg-brand-50 dark:bg-brand-950/40 rounded-2xl flex items-center justify-center mx-auto text-brand-500 dark:text-brand-400">
               <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -403,6 +416,11 @@ export default function HistoryPage() {
               </p>
             </div>
           </Card>
+        ) : status === 'pending' ? (
+          <div className="py-16 flex flex-col items-center justify-center gap-3" aria-busy="true" aria-label="Checking your session">
+            <Spinner className="w-5 h-5 text-brand-600 dark:text-brand-400" />
+            <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Checking your session…</p>
+          </div>
         ) : loading ? (
           <div className="space-y-3" aria-busy="true" aria-label="Loading your history">
             {Array.from({ length: 4 }).map((_, i) => (
