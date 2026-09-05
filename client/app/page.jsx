@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import TopNav from '../components/TopNav';
 import Reveal, { useInViewPlay } from '../components/motion';
 import { Button, Card, Badge } from '../components/ui';
-import { auth } from '../lib/api';
+import { useAuth } from '../components/AuthProvider';
 
 /* ─────────────────────────────────────────────
    SVG Icons (inline, minimal, consistent)
@@ -297,28 +297,65 @@ function StepCard({ number, title, description }) {
 /* ═══════════════════════════════════════════
    MAIN HOME PAGE
    ═══════════════════════════════════════════ */
+const AUTH_UNAVAILABLE_MSG =
+  'Unable to verify your session right now. Please check your connection and try again.';
+
 export default function Home() {
   const router = useRouter();
-  const [user, setUser] = useState(null);
+  const { status, resolve, refresh } = useAuth();
+  const [ctaBusy, setCtaBusy] = useState(false);
+  const [ctaNotice, setCtaNotice] = useState('');
 
+  // Clear the transient notice once auth reaches a definitive state.
   useEffect(() => {
-    auth.me()
-      .then((data) => {
-        if (data?.data?.user) {
-          setUser(data.data.user);
-        }
-      })
-      .catch(() => {});
-  }, []);
+    if (status === 'authenticated' || status === 'guest') setCtaNotice('');
+  }, [status]);
 
-  const handleTakeInterview = () => {
-    router.push(user ? '/interview/setup' : '/login');
+  // Only a definitive answer decides the route. While the session is still
+  // being checked (e.g. Render is waking up) we wait for the backend instead
+  // of sending a possibly-logged-in user to /login.
+  const handleTakeInterview = async () => {
+    if (ctaBusy) return;
+    if (status === 'authenticated') {
+      router.push('/interview/setup');
+      return;
+    }
+    if (status === 'guest') {
+      router.push('/login');
+      return;
+    }
+    setCtaBusy(true);
+    setCtaNotice('');
+    try {
+      let result = await resolve();
+      if (result.status === 'authenticated') {
+        router.push('/interview/setup');
+        return;
+      }
+      if (result.status === 'guest') {
+        router.push('/login');
+        return;
+      }
+      // Still no definitive answer — one user-initiated retry cycle.
+      result = await refresh();
+      if (result.status === 'authenticated') {
+        router.push('/interview/setup');
+        return;
+      }
+      if (result.status === 'guest') {
+        router.push('/login');
+        return;
+      }
+      setCtaNotice(AUTH_UNAVAILABLE_MSG);
+    } finally {
+      setCtaBusy(false);
+    }
   };
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors flex flex-col">
       {/* ─── Navigation ─── */}
-      <TopNav username={user?.username} disableUserFetch />
+      <TopNav />
 
       {/* ─── Hero Section ─── */}
       <section className="relative overflow-hidden">
@@ -352,14 +389,15 @@ export default function Home() {
                   variant="primary"
                   size="lg"
                   onClick={handleTakeInterview}
+                  loading={ctaBusy}
+                  disabled={ctaBusy}
                   style={{ '--fd': '0.46s' }}
                   className="px-8 py-3.5 text-base shadow-lg shadow-brand-500/20 fx-enter-pop"
                 >
-                  Start an Interview
-                  <span className="ml-1">{Icons.arrow}</span>
+                  {ctaBusy ? 'Checking session…' : <>Start an Interview<span className="ml-1">{Icons.arrow}</span></>}
                 </Button>
 
-                {user ? (
+                {status === 'authenticated' ? (
                   <Button
                     variant="outline"
                     size="lg"
@@ -369,7 +407,7 @@ export default function Home() {
                   >
                     View Dashboard
                   </Button>
-                ) : (
+                ) : status === 'guest' ? (
                   <Button
                     variant="outline"
                     size="lg"
@@ -379,8 +417,24 @@ export default function Home() {
                   >
                     Sign Up Free
                   </Button>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="lg"
+                    disabled
+                    style={{ '--fd': '0.58s' }}
+                    className="px-8 py-3.5 text-base fx-enter-pop"
+                  >
+                    Checking session…
+                  </Button>
                 )}
               </div>
+
+              {ctaNotice && (
+                <p role="status" className="text-xs font-medium text-amber-600 dark:text-amber-400 text-center lg:text-left mt-1">
+                  {ctaNotice}
+                </p>
+              )}
 
               {/* Trust indicators */}
               <div className="flex items-center justify-center lg:justify-start gap-6 text-xs text-slate-400 dark:text-slate-500 fx-enter" style={{ '--fd': '0.7s' }}>
@@ -577,11 +631,17 @@ export default function Home() {
                     variant="primary"
                     size="lg"
                     onClick={handleTakeInterview}
+                    loading={ctaBusy}
+                    disabled={ctaBusy}
                     className="px-10 py-4 text-base shadow-lg shadow-brand-500/25 hover:-translate-y-0.5"
                   >
-                    Start an Interview
-                    <span className="ml-1">{Icons.arrow}</span>
+                    {ctaBusy ? 'Checking session…' : <>Start an Interview<span className="ml-1">{Icons.arrow}</span></>}
                   </Button>
+                  {ctaNotice && (
+                    <p role="status" className="mt-4 text-xs font-medium text-amber-300/90">
+                      {ctaNotice}
+                    </p>
+                  )}
                 </div>
               </Reveal>
             </div>

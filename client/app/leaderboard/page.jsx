@@ -1,9 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { leaderboard, auth } from '../../lib/api';
+import { leaderboard } from '../../lib/api';
 import { Spinner, Card, Button } from '../../components/ui';
 import TopNav from '../../components/TopNav';
+import { useAuth } from '../../components/AuthProvider';
 
 /* ─────────────────────────────────────────────
    Icons
@@ -58,10 +59,13 @@ function LeaderboardSkeleton() {
    MAIN LEADERBOARD
    ═══════════════════════════════════════════════ */
 export default function LeaderboardPage() {
+  // Username comes from the shared auth state (single auth.me() per load);
+  // the leaderboard itself is public and loads regardless of auth status.
+  const { user } = useAuth();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [currentUser, setCurrentUser] = useState(null);
+  const currentUser = user?.username || null;
 
   useEffect(() => {
     load();
@@ -71,12 +75,8 @@ export default function LeaderboardPage() {
     setLoading(true);
     setError('');
     try {
-      const [lbRes, meRes] = await Promise.all([
-        leaderboard.list(50),
-        auth.me().catch(() => null),
-      ]);
+      const lbRes = await leaderboard.list(50);
       setRows(lbRes.data || []);
-      setCurrentUser(meRes?.data?.user?.username || null);
     } catch (err) {
       setError(err.message || 'Failed to load leaderboard.');
     } finally {
@@ -89,7 +89,7 @@ export default function LeaderboardPage() {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors pb-16">
-      <TopNav username={currentUser || undefined} />
+      <TopNav />
 
       <main className="max-w-5xl mx-auto py-10 px-4 sm:px-6 space-y-8">
 

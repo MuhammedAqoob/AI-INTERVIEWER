@@ -5,9 +5,11 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Button, Input, Card, CardContent, CardFooter, Spinner } from '../../components/ui';
 import { auth } from '../../lib/api';
+import { useAuth } from '../../components/AuthProvider';
 
 export default function RegisterPage() {
   const router = useRouter();
+  const { status, markAuthenticated } = useAuth();
   const [formData, setFormData] = useState({
     username: '',
     password: '',
@@ -15,17 +17,14 @@ export default function RegisterPage() {
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [checkingAuth, setCheckingAuth] = useState(true);
 
+  // The shared auth check already ran — redirect straight home if it proved a
+  // valid session (no second auth.me() request on this page).
   useEffect(() => {
-    auth.me()
-      .then(() => {
-        router.push('/');
-      })
-      .catch(() => {
-        setCheckingAuth(false);
-      });
-  }, [router]);
+    if (status === 'authenticated') {
+      router.push('/');
+    }
+  }, [status, router]);
 
   const handleChange = (e) => {
     setFormData({
@@ -66,7 +65,8 @@ export default function RegisterPage() {
     }
 
     try {
-      await auth.register(formData.username, formData.password);
+      const res = await auth.register(formData.username, formData.password);
+      markAuthenticated(res?.data?.user);
       router.push('/');
     } catch (err) {
       setError(err.message);
@@ -75,7 +75,7 @@ export default function RegisterPage() {
     }
   };
 
-  if (checkingAuth) {
+  if (status === 'pending') {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
         <div className="flex items-center gap-3 text-slate-500 dark:text-slate-400 text-sm font-medium">

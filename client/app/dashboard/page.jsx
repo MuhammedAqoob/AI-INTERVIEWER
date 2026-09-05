@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { auth, dashboard } from '../../lib/api';
+import { dashboard } from '../../lib/api';
 import { useSessions } from '../../lib/useSessions';
 import { Button, Spinner, Card, Badge, DeleteDialog, CardSkeleton } from '../../components/ui';
 import TopNav from '../../components/TopNav';
 import { useTheme } from '../../components/ThemeProvider';
+import { useAuth } from '../../components/AuthProvider';
 import { formatDate, titleCase } from '../../lib/format';
 
 /* ─────────────────────────────────────────────
@@ -147,29 +148,38 @@ function Divider() {
 export default function DashboardPage() {
   const router = useRouter();
   const { resolvedTheme } = useTheme();
-  const [user, setUser] = useState(null);
+  const { status, user, markGuest } = useAuth();
   const [stats, setStats] = useState(null);
   const [error, setError] = useState('');
   const [pendingDelete, setPendingDelete] = useState(null);
+  const loadedRef = useRef(false);
 
   const { sessions, loading: sessionsLoading, load: loadSessions, remove: removeSession, deletingId } = useSessions();
 
+  // Data loads only after the shared auth check proves the session. A guest is
+  // redirected; an unknown/unavailable backend is never treated as logged out.
   useEffect(() => {
-    Promise.all([auth.me(), dashboard.summary()])
-      .then(([me, summary]) => {
-        setUser(me.data.user);
-        setStats(summary.data);
-      })
+    if (status === 'guest') {
+      router.push('/login');
+      return;
+    }
+    if (status === 'pending') return;
+    if (status === 'unavailable') {
+      setError('Unable to reach the server. Please check your connection and try again.');
+      return;
+    }
+    if (loadedRef.current) return;
+    loadedRef.current = true;
+    dashboard
+      .summary()
+      .then((summary) => setStats(summary.data))
       .catch((err) => {
-        if (err?.status === 401) {
-          router.push('/login');
-        } else {
-          setError(err.message);
-        }
+        // 401 here means the session expired while the page was open.
+        if (err?.status === 401) markGuest();
+        else setError(err.message || 'Failed to load dashboard.');
       });
-
     loadSessions();
-  }, [router, loadSessions]);
+  }, [status, router, markGuest, loadSessions]);
 
   const confirmDelete = async () => {
     if (!pendingDelete) return;
@@ -210,7 +220,7 @@ export default function DashboardPage() {
   if (error && !stats) {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-slate-950 transition-colors">
-        <TopNav username={user?.username} disableUserFetch />
+        <TopNav />
         <main className="max-w-6xl mx-auto py-20 px-4 sm:px-6 text-center">
           <Card className="max-w-md mx-auto p-8 space-y-4">
             <div className="w-12 h-12 rounded-2xl bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 flex items-center justify-center mx-auto">
@@ -228,8 +238,7 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 transition-colors pb-16">
-      <TopNav username={user?.username} disableUserFetch />
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 transition-colors pb-16">        <TopNav />
 
       <main className="max-w-6xl mx-auto py-10 px-4 sm:px-6 lg:px-8 space-y-10">
 

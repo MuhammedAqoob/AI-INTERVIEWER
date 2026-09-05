@@ -1,38 +1,49 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { dashboard, auth } from '../../lib/api';
+import { dashboard } from '../../lib/api';
 import TopNav from '../../components/TopNav';
 import AnalyticsChart from '../../components/AnalyticsChart';
 import { Spinner, Button, Card } from '../../components/ui';
+import { useAuth } from '../../components/AuthProvider';
 
 export default function AnalyticsPage() {
   const router = useRouter();
+  const { status, markGuest } = useAuth();
   const [stats, setStats] = useState(null);
-  const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const loadedRef = useRef(false);
 
+  // Data loads only after the shared auth check proves the session; guests are
+  // redirected and an unreachable backend is never treated as logged out.
   useEffect(() => {
+    if (status === 'guest') {
+      router.push('/login');
+      return;
+    }
+    if (status === 'pending') return;
+    if (status === 'unavailable') {
+      setError('Unable to reach the server. Please check your connection and try again.');
+      setLoading(false);
+      return;
+    }
+    if (loadedRef.current) return;
+    loadedRef.current = true;
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [status]);
 
   const load = async () => {
     setLoading(true);
     setError('');
     try {
-      const meRes = await auth.me().catch(() => null);
-      if (!meRes?.data?.user) {
-        router.push('/login');
-        return;
-      }
-      setUser(meRes.data.user);
       const res = await dashboard.summary();
       setStats(res.data);
     } catch (err) {
-      setError(err.message || 'Failed to load analytics.');
+      if (err?.status === 401) markGuest();
+      else setError(err.message || 'Failed to load analytics.');
     } finally {
       setLoading(false);
     }
@@ -42,7 +53,7 @@ export default function AnalyticsPage() {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors pb-12">
-      <TopNav username={user?.username} />
+      <TopNav />
 
       <main className="max-w-5xl mx-auto py-10 px-4 sm:px-6 space-y-8">
         <div>

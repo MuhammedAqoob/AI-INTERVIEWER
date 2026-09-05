@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { auth } from '../lib/api';
 import { useTheme } from './ThemeProvider';
+import { useAuth } from './AuthProvider';
 
 const NAV_LINKS = [
   { href: '/', label: 'Home' },
@@ -13,10 +14,11 @@ const NAV_LINKS = [
   { href: '/leaderboard', label: 'Leaderboard' },
 ];
 
-export default function TopNav({ username, disableUserFetch = false }) {
+export default function TopNav() {
   const pathname = usePathname();
   const router = useRouter();
   const { resolvedTheme, toggleTheme, mounted } = useTheme();
+  const { status, user, markGuest, refresh } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
 
@@ -30,26 +32,21 @@ export default function TopNav({ username, disableUserFetch = false }) {
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
-  const [fetchedUsername, setFetchedUsername] = useState(null);
 
-  useEffect(() => {
-    if (!disableUserFetch && !username) {
-      auth.me()
-        .then((res) => {
-          if (res?.data?.user?.username) {
-            setFetchedUsername(res.data.user.username);
-          }
-        })
-        .catch(() => {});
-    }
-  }, [username, disableUserFetch]);
-
-  // Only use TopNav-fetched username if the parent page did not supply one.
-  const effectiveUsername = username || fetchedUsername;
+  // Auth state is shared via AuthProvider: only an explicit 401 (or logout)
+  // yields 'guest'. While 'pending'/'unavailable' the navbar stays neutral so a
+  // waking Render backend never flashes a false "Login / Sign Up".
+  const isAuthenticated = status === 'authenticated';
+  const effectiveUsername = isAuthenticated ? user?.username : null;
 
   const handleLogout = async () => {
-    await auth.logout();
-    setFetchedUsername(null);
+    try {
+      await auth.logout();
+    } catch (e) {
+      // Backend unreachable: still drop the local session so the UI never
+      // claims a session the backend could not confirm.
+    }
+    markGuest();
     router.push('/login');
   };
 
@@ -117,7 +114,7 @@ export default function TopNav({ username, disableUserFetch = false }) {
               )}
             </button>
 
-            {effectiveUsername ? (
+            {isAuthenticated ? (
               <div className="flex items-center gap-3">
                 <span className="hidden sm:inline-block text-xs font-semibold px-2.5 py-1 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg border border-slate-200 dark:border-slate-700">
                   {effectiveUsername}
@@ -129,7 +126,7 @@ export default function TopNav({ username, disableUserFetch = false }) {
                   Logout
                 </button>
               </div>
-            ) : (
+            ) : status === 'guest' ? (
               <div className="flex items-center gap-2">
                 <Link
                   href="/login"
@@ -143,6 +140,26 @@ export default function TopNav({ username, disableUserFetch = false }) {
                 >
                   Sign Up
                 </Link>
+              </div>
+            ) : (
+              /* AUTH UNKNOWN: neutral, never a false "Login / Sign Up" */
+              <div aria-live="polite" className="flex items-center gap-2">
+                {status === 'unavailable' ? (
+                  <button
+                    type="button"
+                    onClick={refresh}
+                    className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
+                    Offline · Retry
+                  </button>
+                ) : (
+                  <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-slate-400 dark:text-slate-500">
+                    <span className="w-1.5 h-1.5 rounded-full bg-brand-500 animate-pulse" />
+                    Checking session…
+                  </span>
+                )}
+                <span aria-hidden="true" className="sm:hidden w-1.5 h-1.5 rounded-full bg-brand-500 animate-pulse" />
               </div>
             )}
 
@@ -175,6 +192,21 @@ export default function TopNav({ username, disableUserFetch = false }) {
                 Signed in as <span className="font-semibold text-slate-900 dark:text-slate-100">{effectiveUsername}</span>
               </div>
             )}
+            {!isAuthenticated && status !== 'guest' && (
+              <div className="px-3.5 py-1 text-xs text-slate-400 dark:text-slate-500">
+                {status === 'unavailable' ? (
+                  <button type="button" onClick={refresh} className="inline-flex items-center gap-1.5 transition-colors hover:text-slate-600 dark:hover:text-slate-300">
+                    <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
+                    Offline · Retry
+                  </button>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-brand-500 animate-pulse" />
+                    Checking session…
+                  </span>
+                )}
+              </div>
+            )}
             {NAV_LINKS.map((link) => {
               const active = link.href === '/' ? pathname === '/' : pathname.startsWith(link.href);
               return (
@@ -192,7 +224,7 @@ export default function TopNav({ username, disableUserFetch = false }) {
                 </Link>
               );
             })}
-            {!effectiveUsername ? (
+            {status === 'guest' ? (
               <div className="pt-2 flex flex-col gap-2">
                 <Link
                   href="/login"
@@ -209,7 +241,7 @@ export default function TopNav({ username, disableUserFetch = false }) {
                   Sign Up
                 </Link>
               </div>
-            ) : (
+            ) : isAuthenticated ? (
               <button
                 onClick={() => {
                   setMobileMenuOpen(false);
@@ -219,7 +251,7 @@ export default function TopNav({ username, disableUserFetch = false }) {
               >
                 Logout
               </button>
-            )}
+            ) : null}
           </nav>
         )}
       </div>
