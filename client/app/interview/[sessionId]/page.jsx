@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { interview } from '../../../lib/api';
-import { Spinner, DifficultyBadge, Button, Textarea, Modal } from '../../../components/ui';
+import { Spinner, DifficultyBadge, Button, Textarea, Modal, Card } from '../../../components/ui';
 
 export default function InterviewRoomPage() {
   const router = useRouter();
@@ -16,6 +16,7 @@ export default function InterviewRoomPage() {
   const [error, setError] = useState('');
 
   const load = async () => {
+    setError('');
     try {
       let res = await interview.details(sessionId);
       if (res.data.status === 'PAUSED') {
@@ -23,9 +24,16 @@ export default function InterviewRoomPage() {
       }
       setData(res.data);
     } catch (err) {
-      if (err?.status === 401) router.push('/login');
-      else if (err?.status === 403 || err?.status === 404) router.push('/history');
-      else setError(err.message || 'Could not continue this interview. Please try again.');
+      // 401 → login flow; 403/404 → session unreachable → back to the list.
+      if (err?.status === 401) {
+        router.push('/login');
+      } else if (err?.status === 403 || err?.status === 404) {
+        router.push('/history');
+      } else {
+        // Network / 5xx / unknown → friendly state rendered ABOVE the loading
+        // view so a failed load can never leave the room on an infinite spinner.
+        setError("Couldn't load this interview. Please try again.");
+      }
     }
   };
 
@@ -106,6 +114,25 @@ export default function InterviewRoomPage() {
       setSending(false);
     }
   };
+
+  // A failed load must take precedence over the generic "connecting" view:
+  // without this branch, !data would leave a non-auth failure on an infinite spinner.
+  if (!data && error) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 p-4">
+        <Card className="p-8 text-center max-w-md w-full">
+          <p className="text-lg font-bold text-slate-900 dark:text-slate-100">Couldn't load this interview</p>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 mb-6">
+            Please check your connection and try again, or head back to your dashboard.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-2 justify-center">
+            <Button variant="primary" onClick={load}>Try Again</Button>
+            <Button variant="ghost" onClick={() => router.push('/dashboard')}>Back to Dashboard</Button>
+          </div>
+        </Card>
+      </div>
+    );
+  }
 
   if (!data) {
     return (

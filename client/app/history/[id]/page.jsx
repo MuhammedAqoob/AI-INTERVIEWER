@@ -31,16 +31,24 @@ export default function SessionDetailsPage() {
       const res = await interview.details(id);
       setData(res.data);
     } catch (err) {
-      const msg = err.message || '';
-      if (err?.status === 401) {
+      // 401/403 = authentication/authorization problem → send to the login flow
+      // (same behavior as every other protected page in the app).
+      if (err?.status === 401 || err?.status === 403) {
         router.push('/login');
         return;
       }
-      if (err?.status === 403 || err?.status === 404 || err?.status === 409) {
+      // 409 conflict → preserve existing behavior: return to the history list.
+      if (err?.status === 409) {
         router.push('/history');
         return;
       }
-      setError(msg || 'Failed to load session details.');
+      // 404 → friendly not-found state (no silent redirect, no raw error).
+      if (err?.status === 404) {
+        setError('not-found');
+        return;
+      }
+      // Network failure / 5xx / unknown → friendly retryable state.
+      setError('failed');
     } finally {
       setLoading(false);
     }
@@ -57,15 +65,50 @@ export default function SessionDetailsPage() {
     );
   }
 
-  if (error && !data) {
+  // SAFE no-data guard: never dereference `data` while it can still be null.
+  // This covers every non-success path — auth redirects still in flight,
+  // not-found, failed loads — even if navigation is delayed by a render cycle.
+  if (!data) {
+    if (error === 'not-found') {
+      return (
+        <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center p-4">
+          <Card className="p-8 text-center max-w-md w-full">
+            <p className="text-lg font-bold text-slate-900 dark:text-slate-100">Session not found</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 mb-6">
+              This interview session doesn't exist or is no longer available.
+            </p>
+            <Button variant="primary" onClick={() => router.push('/history')}>
+              Back to History
+            </Button>
+          </Card>
+        </div>
+      );
+    }
+    if (error === 'failed') {
+      return (
+        <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center p-4">
+          <Card className="p-8 text-center max-w-md w-full">
+            <p className="text-lg font-bold text-slate-900 dark:text-slate-100">Couldn't load this session</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 mb-6">
+              Please check your connection and try again.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-2 justify-center">
+              <Button variant="primary" onClick={load}>Try Again</Button>
+              <Button variant="ghost" onClick={() => router.push('/history')}>Back to History</Button>
+            </div>
+          </Card>
+        </div>
+      );
+    }
+    // No data and no error: an auth/conflict redirect is in flight (or the id
+    // was missing). Keep the existing loading view so the hand-off to /login or
+    // /history stays smooth — the component is safe even if navigation is delayed.
     return (
-      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center p-4">
-        <Card className="p-8 text-center max-w-md w-full">
-          <p className="text-rose-600 dark:text-rose-400 font-semibold mb-4">{error}</p>
-          <Button variant="primary" onClick={() => router.push('/history')}>
-            Back to History
-          </Button>
-        </Card>
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center">
+        <div className="flex items-center gap-3 text-slate-500 text-sm font-medium">
+          <Spinner className="w-6 h-6 text-brand-600 dark:text-brand-400" />
+          <span>Loading session details...</span>
+        </div>
       </div>
     );
   }
