@@ -116,23 +116,28 @@
   from { opacity: 0; }
   to   { opacity: 1; }
 }
-/* "Typing"-style reveal: the TEXT draws itself left → right (applied to the
-   inner paragraph, so the card stays stable while its text appears).
-   Duration is set per-text via --fx-dur (default 0.75s). */
-@keyframes fx-wipe {
-  from { clip-path: inset(0 100% 0 0); }
-  to   { clip-path: inset(0 0 0 0); }
+/* "Typing"-style reveal, WORD BY WORD: each word pops in on a tight stagger
+   (delay per word comes from an inline --wd), so the text reads like it is
+   being typed rather than wiped as a whole paragraph. */
+@keyframes fx-word-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
-/* AI evaluation status row — fades up while the "AI" analyses the answer */
-@keyframes fx-eval-in {
-  from { opacity: 0; transform: translateY(0.3rem); }
-  to   { opacity: 1; transform: translateY(0); }
+/* AI evaluation strip — one 9s-cycle animation: it occupies no space until
+   the answer has finished typing (opens ~5.2s), stays open ~1.25s, then
+   closes BEFORE the score panel appears (~6.5s). max-height is clipped so the
+   row leaves no gap while closed. Shares the cycle length of the demo. */
+@keyframes fx-eval-cycle {
+  0%, 57.6%   { opacity: 0; max-height: 0; }
+  58.4%       { opacity: 1; max-height: 3rem; }
+  71.4%       { opacity: 1; max-height: 3rem; }
+  72.4%, 100% { opacity: 0; max-height: 0; }
 }
 
 .fx-materialize { animation: fx-materialize 0.4s var(--fx-ease) both; animation-delay: var(--fd); }
 .fx-fade-in     { animation: fx-fade 0.35s var(--fx-ease) both; animation-delay: var(--fd); }
-.fx-wipe        { animation: fx-wipe var(--fx-dur, 0.75s) var(--fx-ease) both; animation-delay: var(--fd); }
-.fx-eval-in     { animation: fx-eval-in 0.35s var(--fx-ease) both; }
+.fx-word        { display: inline-block; animation: fx-word-in 0.09s ease-out both; animation-delay: var(--wd); }
+.fx-eval        { overflow: hidden; animation: fx-eval-cycle 9s var(--fx-ease) both; }
 
 /* Viewport-gated sequence for the below-the-fold mockup placement.
    The wrapper is hidden while armed; once it scrolls into view the same
@@ -147,16 +152,20 @@ html.motion .demo-gated-root { opacity: 0; }
 .demo-playing .demo-child { animation: fx-rise 0.5s var(--fx-ease) both; animation-delay: var(--fd); }
 .demo-playing .demo-child-materialize { animation: fx-materialize 0.4s var(--fx-ease) both; animation-delay: var(--fd); }
 .demo-playing .demo-child-fade { animation-name: fx-fade; }
-.demo-playing .demo-child-wipe { animation: fx-wipe var(--fx-dur, 0.75s) var(--fx-ease) both; animation-delay: var(--fd); }
+.demo-playing .demo-child-word { display: inline-block; animation: fx-word-in 0.09s ease-out both; animation-delay: var(--wd); }
 .demo-playing .demo-child-pop  { animation-name: fx-pop; }
 .demo-playing .demo-bar { animation: fx-grow-bar 0.45s var(--fx-ease) both; animation-delay: var(--fd); }
+.demo-playing .demo-eval { overflow: hidden; animation: fx-eval-cycle 9s var(--fx-ease) both; }
 
 @media (prefers-reduced-motion: reduce) {
   .fx-materialize,
   .fx-fade-in,
-  .fx-wipe,
-  .fx-eval-in {
+  .fx-word {
     animation: none !important;
+  }
+  .fx-eval,
+  .demo-eval {
+    display: none !important;
   }
   html.motion .demo-gated-root,
   .demo-hidden { opacity: 1 !important; }
