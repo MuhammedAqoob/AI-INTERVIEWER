@@ -84,6 +84,10 @@ export default function Reveal({
  * The observer uses a -45% bottom root margin, i.e. the sequence starts when
  * the card's top reaches ~55% of the viewport height — not when its bottom
  * edge merely peeks into view. Plays once, never re-runs.
+ *
+ * Returns `playing` (true once the sequence has been triggered) so callers can
+ * synchronise JS-driven phases (e.g. the demo loop timer) with the CSS-driven
+ * sequence instead of assuming it started at mount.
  */
 export function useInViewPlay({ enabled = true } = {}) {
   const ref = useRef(null);
@@ -119,5 +123,5 @@ export function useInViewPlay({ enabled = true } = {}) {
   const className =
     phase === 'hidden' ? 'demo-hidden' : phase === 'playing' ? 'demo-playing' : '';
 
-  return { ref, className };
+  return { ref, className, playing: phase === 'playing' };
 }

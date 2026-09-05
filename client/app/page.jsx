@@ -85,11 +85,35 @@ function SectionDivider() {
    ───────────────────────────────────────────── */
 function HeroMockup({ mode = 'load' }) {
   const gated = mode === 'inview';
-  const { ref: gateRef, className: gateState } = useInViewPlay({ enabled: gated });
+  const { ref: gateRef, className: gateState, playing } = useInViewPlay({ enabled: gated });
 
+  // ─── Cinematic looping demo timeline ───
   // One staged sequence for both placements; only the trigger differs:
   //  - mode="load"   (desktop hero, above the fold) → pure CSS at first paint
   //  - mode="inview" (mobile, below the fold)       → plays when scrolled into view
+  // The children carry CSS entrance animations with inline --fd delays; a single
+  // 9s cycle timer re-mounts them (key={cycle}) to replay the whole sequence,
+  // and toggles the "AI is evaluating your answer…" status between the answer
+  // and the results. Timings mirror the CSS delays below.
+  // Reduced motion: no timers run, so the static final state stays visible.
+  const [cycle, setCycle] = useState(0);
+  const [evalOn, setEvalOn] = useState(false);
+
+  useEffect(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    if (gated && !playing) return; // wait until the card actually enters the viewport
+
+    const timers = [
+      setTimeout(() => setEvalOn(true), 5450), // answer complete → AI evaluating
+      setTimeout(() => setEvalOn(false), 6700), // evaluation done → results
+      setTimeout(() => {
+        setEvalOn(false);
+        setCycle((c) => c + 1); // replay the demo cleanly
+      }, 9000),
+    ];
+    return () => timers.forEach(clearTimeout);
+  }, [cycle, gated, playing]);
+
   // `c(loadClass, gateClass)` picks the animation classes for the current mode.
   const c = (loadClass, gateClass) => (gated ? gateClass : loadClass);
   const fd = (s) => ({ '--fd': s });
@@ -118,39 +142,47 @@ function HeroMockup({ mode = 'load' }) {
           </div>
         </div>
 
-        {/* Mockup messages */}
-        <div className="p-5 space-y-4">
-          {/* AI question — slides in from the left */}
-          <div className={`flex gap-3 ${c('fx-enter-x', 'demo-child demo-child-x')}`} style={fd('0.3s')}>
+        {/* Mockup messages — keyed by cycle so the whole demo replays on loop */}
+        <div key={cycle} className="p-5 space-y-4">
+          {/* AI question — card materializes quickly, then its text types in */}
+          <div className={`flex gap-3 ${c('fx-materialize', 'demo-child demo-child-materialize')}`} style={fd('0.15s')}>
             <div className="w-7 h-7 rounded-full bg-brand-600 flex items-center justify-center flex-shrink-0 mt-0.5">
               <span className="text-white text-[9px] font-bold">AI</span>
             </div>
             <div className="bg-brand-50 dark:bg-brand-950/40 border border-brand-200/50 dark:border-brand-800/50 rounded-xl rounded-tl-sm px-4 py-2.5 max-w-[85%]">
-              <p className="text-sm text-slate-800 dark:text-slate-200 leading-relaxed">
+              <p className={`text-sm text-slate-800 dark:text-slate-200 leading-relaxed ${c('fx-wipe', 'demo-child demo-child-wipe')}`} style={{ '--fd': '0.5s', '--fx-dur': '1.8s' }}>
                 Explain the difference between TCP and UDP. When would you choose one over the other?
               </p>
             </div>
           </div>
 
-          {/* User answer — bubble draws itself in like it is being typed */}
+          {/* User answer — card materializes quickly, then its text types in */}
           <div className="flex gap-3 justify-end">
-            <div className={`bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl rounded-tr-sm px-4 py-2.5 max-w-[85%] ${c('fx-wipe', 'demo-child demo-child-wipe')}`} style={fd('0.92s')}>
-              <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
+            <div className={`bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl rounded-tr-sm px-4 py-2.5 max-w-[85%] ${c('fx-materialize', 'demo-child demo-child-materialize')}`} style={fd('2.6s')}>
+              <p className={`text-sm text-slate-700 dark:text-slate-300 leading-relaxed ${c('fx-wipe', 'demo-child demo-child-wipe')}`} style={{ '--fd': '2.95s', '--fx-dur': '2.25s' }}>
                 TCP is connection-oriented and ensures reliable delivery with ordering, while UDP is connectionless and faster but doesn&apos;t guarantee delivery...
               </p>
             </div>
-            <div className={`w-7 h-7 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center flex-shrink-0 mt-0.5 ${c('fx-fade-in', 'demo-child demo-child-fade')}`} style={fd('0.78s')}>
+            <div className={`w-7 h-7 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center flex-shrink-0 mt-0.5 ${c('fx-fade-in', 'demo-child demo-child-fade')}`} style={fd('2.7s')}>
               <svg className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0" />
               </svg>
             </div>
           </div>
 
-          {/* Analytics — appears after the answer, then bars grow, then the score pops */}
-          <div className={`bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 ${c('fx-enter', 'demo-child')}`} style={fd('1.7s')}>
+          {/* AI evaluation state — visible while the AI analyses the answer */}
+          {evalOn && (
+            <div className="fx-eval-in flex items-center gap-2.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-brand-500 animate-pulse" />
+              <span className="text-xs text-slate-500 dark:text-slate-400">AI is evaluating your answer...</span>
+            </div>
+          )}
+
+          {/* Analytics — appears after the evaluation, then bars grow, then the score pops */}
+          <div className={`bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 ${c('fx-enter', 'demo-child')}`} style={fd('6.7s')}>
             <div className="flex items-center justify-between mb-2">
               <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Score</span>
-              <span className={`inline-block ${c('fx-enter-pop', 'demo-child demo-child-pop')}`} style={fd('2.1s')}>
+              <span className={`inline-block ${c('fx-enter-pop', 'demo-child demo-child-pop')}`} style={fd('7.3s')}>
                 <Badge variant="success" className="text-[10px]">82 / 100</Badge>
               </span>
             </div>
@@ -166,7 +198,7 @@ function HeroMockup({ mode = 'load' }) {
                   <div className="h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden mb-1">
                     <div
                       className={`h-full bg-brand-500 dark:bg-brand-400 rounded-full ${c('bar-fill', 'demo-bar')}`}
-                      style={{ width: `${m.val}%`, '--fd': `${(1.9 + idx * 0.05).toFixed(2)}s` }}
+                      style={{ width: `${m.val}%`, '--fd': `${(6.9 + idx * 0.05).toFixed(2)}s` }}
                     />
                   </div>
                   <span className="text-[9px] text-slate-400 dark:text-slate-500">{m.label}</span>
