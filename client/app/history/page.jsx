@@ -396,7 +396,7 @@ export default function HistoryPage() {
                 New here?{' '}
                 <Link
                   href="/register"
-                  className="font-semibold text-brand-600 dark:text-brand-400 hover:underline rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+                  className="font-semibold text-brand-600 dark:text-brand-400 hover:underline transition-colors rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
                 >
                   Create an account
                 </Link>

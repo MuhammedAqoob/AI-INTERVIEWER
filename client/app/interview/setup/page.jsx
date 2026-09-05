@@ -72,7 +72,8 @@ export default function InterviewSetupPage() {
         router.replace('/login');
         return;
       }
-      setError(err.message);
+      // Never surface raw backend text — a friendly message plus Retry below.
+      setError("Couldn't load interview options. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -150,7 +151,7 @@ export default function InterviewSetupPage() {
   const showResumeUpload = selectedType === 'RESUME';
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 transition-colors pb-12">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 transition-colors pb-16">
       {/* Header Bar */}
       <header className="bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800/80 sticky top-0 z-30">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
@@ -184,14 +185,20 @@ export default function InterviewSetupPage() {
             <svg className="w-5 h-5 flex-shrink-0 mt-0.5 text-rose-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            <span>{error}</span>
+            <span className="flex-1">{error}</span>
+            {/* Retry only makes sense for the options fetch itself */}
+            {options.interviewTypes.length === 0 && (
+              <Button variant="outline" size="sm" onClick={loadOptions} className="shrink-0">
+                Retry
+              </Button>
+            )}
           </div>
         )}
 
         {/* Step 1: Select Type */}
         <section className="space-y-4">
           <div>
-            <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">
+            <h2 className="text-xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100">
               1. Select Interview Type
             </h2>
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
@@ -241,7 +248,7 @@ export default function InterviewSetupPage() {
         {showBranchSelection && (
           <section className="space-y-4 animate-in fade-in duration-300">
             <div>
-              <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">
+              <h2 className="text-xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100">
                 2. Select Engineering Branch
               </h2>
               <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
@@ -278,7 +285,7 @@ export default function InterviewSetupPage() {
         {showResumeUpload && (
           <section className="space-y-4 animate-in fade-in duration-300">
             <div>
-              <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">
+              <h2 className="text-xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100">
                 2. Upload Resume File
               </h2>
               <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
@@ -338,7 +345,7 @@ export default function InterviewSetupPage() {
         {selectedType && (
           <section className="space-y-4 animate-in fade-in duration-300">
             <div>
-              <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">
+              <h2 className="text-xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100">
                 3. Number of Questions
               </h2>
               <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
