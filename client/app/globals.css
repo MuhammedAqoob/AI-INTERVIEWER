@@ -135,21 +135,23 @@
 }
 /* Analytics panel — deliberately does NOT reserve space up front. It stays
    collapsed (no height) while the question, answer and evaluation play, so
-   there is never an empty gap under the conversation. Only when the
-   evaluation finishes (~7.7s into the 10s cycle) does the panel open and the
-   card grow to fit the score and bars. max-height is clipped while closed. */
+   there is never an empty gap under the conversation. When the evaluation
+   finishes (~7.65s into the 10s cycle) the panel opens quickly and the card
+   grows — the bars and score badge animate at the same time (their own
+   delays start ~7.7s), so nothing sits at zero before it animates.
+   max-height is clipped while closed. */
 @keyframes fx-panel-cycle {
   0%, 76.5%   { max-height: 0; opacity: 0; }
   77%         { max-height: 0; opacity: 1; }
-  81.5%       { max-height: 8rem; }
+  79.5%       { max-height: 8rem; }
   100%        { max-height: 8rem; opacity: 1; }
 }
 
 .fx-materialize { animation: fx-materialize 0.4s var(--fx-ease) both; animation-delay: var(--fd); }
 .fx-fade-in     { animation: fx-fade 0.35s var(--fx-ease) both; animation-delay: var(--fd); }
 .fx-word        { display: inline-block; animation: fx-word-in 0.09s ease-out both; animation-delay: var(--wd); }
-.fx-eval        { overflow: hidden; animation: fx-eval-cycle 9s var(--fx-ease) both; }
-.fx-panel       { overflow: hidden; animation: fx-panel-cycle 9s var(--fx-ease) both; }
+.fx-eval        { overflow: hidden; animation: fx-eval-cycle 10s var(--fx-ease) both; }
+.fx-panel       { overflow: hidden; animation: fx-panel-cycle 10s var(--fx-ease) both; }
 
 /* Viewport-gated sequence for the below-the-fold mockup placement.
    The wrapper is hidden while armed; once it scrolls into view the same
@@ -167,8 +169,8 @@ html.motion .demo-gated-root { opacity: 0; }
 .demo-playing .demo-child-word { display: inline-block; animation: fx-word-in 0.09s ease-out both; animation-delay: var(--wd); }
 .demo-playing .demo-child-pop  { animation-name: fx-pop; }
 .demo-playing .demo-bar { animation: fx-grow-bar 0.45s var(--fx-ease) both; animation-delay: var(--fd); }
-.demo-playing .demo-eval { overflow: hidden; animation: fx-eval-cycle 9s var(--fx-ease) both; }
-.demo-playing .demo-panel { overflow: hidden; animation: fx-panel-cycle 9s var(--fx-ease) both; }
+.demo-playing .demo-eval { overflow: hidden; animation: fx-eval-cycle 10s var(--fx-ease) both; }
+.demo-playing .demo-panel { overflow: hidden; animation: fx-panel-cycle 10s var(--fx-ease) both; }
 
 @media (prefers-reduced-motion: reduce) {
   .fx-materialize,

@@ -203,7 +203,7 @@ function HeroMockup({ mode = 'load' }) {
               <div className="bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Score</span>
-                  <span className={`inline-block ${c('fx-enter-pop', 'demo-child demo-child-pop')}`} style={fd('8.3s')}>
+                  <span className={`inline-block ${c('fx-enter-pop', 'demo-child demo-child-pop')}`} style={fd('7.9s')}>
                     <Badge variant="success" className="text-[10px]">82 / 100</Badge>
                   </span>
                 </div>
@@ -219,7 +219,7 @@ function HeroMockup({ mode = 'load' }) {
                       <div className="h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden mb-1">
                         <div
                           className={`h-full bg-brand-500 dark:bg-brand-400 rounded-full ${c('bar-fill', 'demo-bar')}`}
-                          style={{ width: `${m.val}%`, '--fd': `${(8 + idx * 0.05).toFixed(2)}s` }}
+                          style={{ width: `${m.val}%`, '--fd': `${(7.7 + idx * 0.05).toFixed(2)}s` }}
                         />
                       </div>
                       <span className="text-[9px] text-slate-400 dark:text-slate-500">{m.label}</span>
