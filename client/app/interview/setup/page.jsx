@@ -66,6 +66,12 @@ export default function InterviewSetupPage() {
       });
       setOptions({ ...res.data, interviewTypes: sortedTypes });
     } catch (err) {
+      // 401 means no valid session — route to login instead of showing the
+      // backend's raw "Access denied" message.
+      if (err?.status === 401) {
+        router.replace('/login');
+        return;
+      }
       setError(err.message);
     } finally {
       setLoading(false);

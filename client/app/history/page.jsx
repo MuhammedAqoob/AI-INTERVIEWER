@@ -1,10 +1,12 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { useSessions } from '../../lib/useSessions';
 import { DeleteDialog, Button, Card, Badge } from '../../components/ui';
 import TopNav from '../../components/TopNav';
+import { useAuth } from '../../components/AuthProvider';
 import { formatDate, titleCase } from '../../lib/format';
 
 /* ─────────────────────────────────────────────
@@ -216,12 +218,33 @@ function HistorySessionCard({ session, onDelete, onViewDetails, onRetake, deleti
    ═══════════════════════════════════════════════ */
 export default function HistoryPage() {
   const router = useRouter();
-  const { sessions, loading, error, deletingId, load, remove } = useSessions();
+  const { status } = useAuth();
+  const { sessions, loading, error, errorStatus, deletingId, load, remove } = useSessions();
   const [pendingDelete, setPendingDelete] = useState(null);
+  const [authRequired, setAuthRequired] = useState(false);
+  const loadedRef = useRef(false);
 
+  // Guests never hit the (protected) history endpoint — they get a friendly
+  // login-required state instead of the backend's raw 401 message.
   useEffect(() => {
-    load();
-  }, [load]);
+    if (status === 'guest') {
+      setAuthRequired(true);
+      return;
+    }
+    if (status === 'pending') return; // let the shared auth check finish
+    // authenticated (or unknown-but-reachable): try loading the list once
+    if (authRequired) setAuthRequired(false);
+    if (!loadedRef.current) {
+      loadedRef.current = true;
+      load();
+    }
+  }, [status, load, authRequired]);
+
+  // A 401 on an in-page fetch (e.g. the session expired while browsing) also
+  // resolves to the friendly login-required state.
+  useEffect(() => {
+    if (errorStatus === 401) setAuthRequired(true);
+  }, [errorStatus]);
 
   const confirmDelete = async () => {
     if (!pendingDelete) return;
@@ -284,8 +307,8 @@ export default function HistoryPage() {
           </Button>
         </section>
 
-        {/* ─── Error ─── */}
-        {error && (
+        {/* ─── Error (non-auth failures only) ─── */}
+        {error && !authRequired && (
           <div role="alert" className="p-4 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 rounded-2xl text-sm flex items-center justify-between gap-3">
             <span>{error}</span>
             <Button variant="outline" size="sm" onClick={() => load()}>Retry</Button>
@@ -325,7 +348,35 @@ export default function HistoryPage() {
         )}
 
         {/* ─── 3. Session List ─── */}
-        {loading ? (
+        {authRequired ? (
+          <Card className="max-w-lg mx-auto p-10 text-center space-y-4">
+            <div className="w-16 h-16 bg-brand-50 dark:bg-brand-950/40 rounded-2xl flex items-center justify-center mx-auto text-brand-500 dark:text-brand-400">
+              <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+              </svg>
+            </div>
+            <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">
+              Log in to view your interview history
+            </h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
+              Your sessions and scores are private. Sign in to review past interviews, retake one, or continue where you left off.
+            </p>
+            <div className="pt-2 flex flex-col items-center gap-3">
+              <Button variant="primary" size="lg" onClick={() => router.push('/login')} className="w-full sm:w-auto">
+                Log In
+              </Button>
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                New here?{' '}
+                <Link
+                  href="/register"
+                  className="font-semibold text-brand-600 dark:text-brand-400 hover:underline rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+                >
+                  Create an account
+                </Link>
+              </p>
+            </div>
+          </Card>
+        ) : loading ? (
           <div className="space-y-3">
             {Array.from({ length: 4 }).map((_, i) => (
               <SkeletonCard key={i} />

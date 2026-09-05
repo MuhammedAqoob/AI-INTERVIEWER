@@ -160,7 +160,9 @@ export default function DashboardPage() {
   // redirected; an unknown/unavailable backend is never treated as logged out.
   useEffect(() => {
     if (status === 'guest') {
-      router.push('/login');
+      // replace so Back from the login page goes to wherever the user was
+      // before the dashboard (not straight back into this guest redirect).
+      router.replace('/login');
       return;
     }
     if (status === 'pending') return;

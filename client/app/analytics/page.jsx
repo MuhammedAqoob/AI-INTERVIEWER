@@ -20,7 +20,9 @@ export default function AnalyticsPage() {
   // redirected and an unreachable backend is never treated as logged out.
   useEffect(() => {
     if (status === 'guest') {
-      router.push('/login');
+      // replace so Back from the login page goes to wherever the user was
+      // before the analytics page (not straight back into this guest redirect).
+      router.replace('/login');
       return;
     }
     if (status === 'pending') return;
