@@ -83,15 +83,25 @@
 .fx-reveal.fx-fade.fx-hide { transform: none; }
 .fx-reveal.fx-zoom.fx-hide { transform: scale(0.97) translateY(0.6rem); }
 
+/* --- Subtle route-change transition. The wrapper is keyed by pathname so it
+       remounts on navigation and this short fade+rise replays. --- */
+@keyframes fx-page-in {
+  from { opacity: 0; transform: translateY(0.5rem); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.page-enter { animation: fx-page-in 0.28s var(--fx-ease) both; }
+
 /* --- Accessibility: honour prefers-reduced-motion.
        Decorative motion is removed; content stays fully visible. --- */
+
 @media (prefers-reduced-motion: reduce) {
   .fx-enter,
   .fx-enter-down,
   .fx-enter-pop,
   .fx-enter-zoom,
   .fx-orb,
-  .bar-fill {
+  .bar-fill,
+  .page-enter {
     animation: none !important;
   }
   .fx-reveal {
@@ -100,6 +110,10 @@
   .fx-reveal.fx-hide {
     opacity: 1 !important;
     transform: none !important;
+  }
+  /* Quiet the pulse used by skeleton loaders and status dots. */
+  .animate-pulse {
+    animation: none !important;
   }
 }
 

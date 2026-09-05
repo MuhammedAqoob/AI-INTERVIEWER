@@ -98,8 +98,17 @@ export function AuthProvider({ children }) {
     return startCheck().then(() => stateRef.current);
   }, []);
 
-  /** Starts a fresh check cycle (used for user-initiated retries). */
-  const refresh = useCallback(() => startCheck().then(() => stateRef.current), []);
+  /** Starts a fresh check cycle (used for user-initiated retries). Applies the
+   *  settled result so a successful retry actually moves the UI out of
+   *  'pending'/'unavailable' (the in-flight request may be the mount check —
+   *  applying twice with the same value is harmless). */
+  const refresh = useCallback(() => {
+    return startCheck().then((result) => {
+      stateRef.current = result;
+      setState(result);
+      return result;
+    });
+  }, []);
 
   return (
     <AuthContext.Provider

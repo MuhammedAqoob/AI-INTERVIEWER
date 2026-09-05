@@ -1,12 +1,11 @@
 'use client';
 
-import { useEffect, useState, useMemo, useRef } from 'react';
+import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { dashboard } from '../../lib/api';
 import { useSessions } from '../../lib/useSessions';
-import { Button, Spinner, Card, Badge, DeleteDialog, CardSkeleton } from '../../components/ui';
+import { Button, Card, Badge, DeleteDialog, Skeleton } from '../../components/ui';
 import TopNav from '../../components/TopNav';
-import { useTheme } from '../../components/ThemeProvider';
 import { useAuth } from '../../components/AuthProvider';
 import { formatDate, titleCase } from '../../lib/format';
 
@@ -143,18 +142,131 @@ function Divider() {
 }
 
 /* ═══════════════════════════════════════════════
+   Dashboard skeletons — shaped to the geometry of
+   the sections they replace (no layout jump).
+   ═══════════════════════════════════════════════ */
+function StatCardSkeleton() {
+  return (
+    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800/80 p-5 shadow-sm space-y-3" aria-hidden="true">
+      <div className="flex items-center justify-between">
+        <Skeleton className="h-3 w-24 rounded-full" />
+        <Skeleton className="h-9 w-9 rounded-xl" />
+      </div>
+      <Skeleton className="h-9 w-16 rounded-lg" />
+      <Skeleton className="h-3 w-20 rounded-full" />
+    </div>
+  );
+}
+
+function ScoreCardSkeleton() {
+  return (
+    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800/80 p-5 shadow-sm space-y-3" aria-hidden="true">
+      <Skeleton className="h-3 w-14 rounded-full" />
+      <Skeleton className="h-10 w-16 rounded-lg" />
+      <Skeleton className="h-3 w-24 rounded-full" />
+      <Skeleton className="h-2 w-full rounded-full" />
+    </div>
+  );
+}
+
+function RecentRowSkeleton() {
+  return (
+    <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 rounded-xl px-5 py-4 flex items-center gap-4" aria-hidden="true">
+      <Skeleton className="h-9 w-9 rounded-lg shrink-0" />
+      <div className="flex-1 min-w-0 space-y-2">
+        <div className="flex items-center gap-2">
+          <Skeleton className="h-4 w-20 rounded-full" />
+          <Skeleton className="h-4 w-14 rounded-full" />
+        </div>
+        <Skeleton className="h-3 w-32 rounded-full" />
+      </div>
+      <Skeleton className="h-8 w-12 rounded-lg shrink-0" />
+    </div>
+  );
+}
+
+/* Skeleton for the summary + first content region, shown while the summary
+   request is in flight. Stat cards always exist once data arrives, so their
+   skeleton is exact; the block below mirrors the Performance Overview grid
+   that users with data see first. */
+function DashboardSkeleton() {
+  return (
+    <section aria-busy="true" aria-label="Loading your dashboard">
+      <span className="sr-only">Loading your dashboard…</span>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <StatCardSkeleton />
+        <StatCardSkeleton />
+        <StatCardSkeleton />
+      </div>
+
+      <div className="space-y-6 pt-10">
+        <div>
+          <Skeleton className="h-6 w-56 rounded-lg" aria-hidden="true" />
+          <Skeleton className="h-3 w-72 max-w-full rounded-full mt-2" aria-hidden="true" />
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+          <ScoreCardSkeleton />
+          <ScoreCardSkeleton />
+          <ScoreCardSkeleton />
+          <ScoreCardSkeleton />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* Friendly inline error card used inside the page shell (never a full-page
+   spinner, never a dead end). */
+function ContentError({ title, message, onRetry, retryLabel = 'Try Again' }) {
+  return (
+    <Card className="max-w-lg mx-auto p-8 space-y-4">
+      <div className="w-12 h-12 rounded-2xl bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 flex items-center justify-center mx-auto">
+        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+        </svg>
+      </div>
+      <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100 text-center">{title}</h2>
+      <p className="text-sm text-slate-500 dark:text-slate-400 text-center">{message}</p>
+      <div className="flex justify-center pt-1">
+        <Button variant="primary" onClick={onRetry}>{retryLabel}</Button>
+      </div>
+    </Card>
+  );
+}
+
+/* ═══════════════════════════════════════════════
    MAIN DASHBOARD
    ═══════════════════════════════════════════════ */
 export default function DashboardPage() {
   const router = useRouter();
-  const { resolvedTheme } = useTheme();
-  const { status, user, markGuest } = useAuth();
+  const { status, user, markGuest, refresh } = useAuth();
   const [stats, setStats] = useState(null);
-  const [error, setError] = useState('');
+  const [statsError, setStatsError] = useState('');
   const [pendingDelete, setPendingDelete] = useState(null);
   const loadedRef = useRef(false);
 
-  const { sessions, loading: sessionsLoading, load: loadSessions, remove: removeSession, deletingId } = useSessions();
+  const {
+    sessions,
+    loading: sessionsLoading,
+    error: sessionsError,
+    errorStatus: sessionsErrorStatus,
+    load: loadSessions,
+    remove: removeSession,
+    deletingId,
+  } = useSessions();
+
+  const loadStats = useCallback(() => {
+    setStatsError('');
+    return dashboard
+      .summary()
+      .then((summary) => setStats(summary.data))
+      .catch((err) => {
+        // 401 here means the session expired while the page was open.
+        if (err?.status === 401) markGuest();
+        else setStatsError(err.message || 'Failed to load dashboard.');
+      });
+  }, [markGuest]);
 
   // Data loads only after the shared auth check proves the session. A guest is
   // redirected; an unknown/unavailable backend is never treated as logged out.
@@ -165,29 +277,25 @@ export default function DashboardPage() {
       router.replace('/login');
       return;
     }
-    if (status === 'pending') return;
-    if (status === 'unavailable') {
-      setError('Unable to reach the server. Please check your connection and try again.');
-      return;
-    }
+    if (status === 'pending' || status === 'unavailable') return;
     if (loadedRef.current) return;
     loadedRef.current = true;
-    dashboard
-      .summary()
-      .then((summary) => setStats(summary.data))
-      .catch((err) => {
-        // 401 here means the session expired while the page was open.
-        if (err?.status === 401) markGuest();
-        else setError(err.message || 'Failed to load dashboard.');
-      });
+    loadStats();
     loadSessions();
-  }, [status, router, markGuest, loadSessions]);
+  }, [status, router, loadStats, loadSessions]);
+
+  // A mid-session 401 from the history call means the session expired while
+  // this page was open — resolve to guest so the page redirects to /login.
+  useEffect(() => {
+    if (sessionsErrorStatus === 401) markGuest();
+  }, [sessionsErrorStatus, markGuest]);
 
   const confirmDelete = async () => {
     if (!pendingDelete) return;
     await removeSession(pendingDelete);
     setPendingDelete(null);
-    dashboard.summary().then((summary) => setStats(summary.data)).catch(() => {});
+    // Refresh the summary so the counts/activity reflect the deletion.
+    loadStats();
   };
 
   /* ─── Derived data ─── */
@@ -206,49 +314,30 @@ export default function DashboardPage() {
       .slice(0, 5);
   }, [sessions]);
 
-  /* ─── Loading state ─── */
-  if (!stats && !error) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
-        <div className="flex items-center gap-3 text-slate-500 dark:text-slate-400 text-sm font-medium">
-          <Spinner className="w-6 h-6 text-brand-600 dark:text-brand-400" />
-          <span>Loading dashboard...</span>
-        </div>
-      </div>
-    );
-  }
-
-  /* ─── Error state ─── */
-  if (error && !stats) {
+  // Guest: the effect above redirects immediately; render a minimal shell so
+  // there is never a flash of dashboard content for a logged-out visitor.
+  if (status === 'guest') {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-slate-950 transition-colors">
         <TopNav />
-        <main className="max-w-6xl mx-auto py-20 px-4 sm:px-6 text-center">
-          <Card className="max-w-md mx-auto p-8 space-y-4">
-            <div className="w-12 h-12 rounded-2xl bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 flex items-center justify-center mx-auto">
-              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
-              </svg>
-            </div>
-            <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">Something went wrong</h2>
-            <p className="text-sm text-slate-500 dark:text-slate-400">{error}</p>
-            <Button variant="primary" onClick={() => window.location.reload()}>Try Again</Button>
-          </Card>
-        </main>
+        <main className="max-w-6xl mx-auto py-10 px-4 sm:px-6 lg:px-8" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 transition-colors pb-16">        <TopNav />
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 transition-colors pb-16">
+      <TopNav />
 
       <main className="max-w-6xl mx-auto py-10 px-4 sm:px-6 lg:px-8 space-y-10">
 
-        {/* ─── 1. Welcome Header ─── */}
+        {/* ─── 1. Welcome Header (static — renders immediately) ─── */}
         <section className="space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
             <div>
-              <p className="text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">{getGreeting()}, {user?.username} 👋</p>
+              <p className="text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">
+                {getGreeting()}{user ? `, ${user.username} 👋` : ''}
+              </p>
               <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100">
                 Ready for your next interview?
               </h1>
@@ -265,311 +354,334 @@ export default function DashboardPage() {
           </div>
         </section>
 
-        {/* ─── Active session banner ─── */}
-        {stats?.continueSessionId && (
-          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-brand-600 to-indigo-600 p-5 sm:p-6 text-white shadow-lg">
-            <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none" />
-            <div className="relative flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-              <div>
-                <h3 className="text-base font-bold">You have an active interview session</h3>
-                <p className="text-sm text-brand-100 mt-0.5">Resume where you left off to get full feedback on your performance.</p>
-              </div>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => router.push(`/interview/${stats.continueSessionId}`)}
-                className="whitespace-nowrap"
-              >
-                Continue Session →
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {/* ─── 2. Top Summary Cards ─── */}
-        <section className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800/80 p-5 shadow-sm">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Interviews Left Today</p>
-              <div className="w-9 h-9 rounded-xl bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 flex items-center justify-center">
-                {Icons.clock}
-              </div>
-            </div>
-            <p className="text-3xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100">
-              {stats?.interviewsRemainingToday ?? 5}
-            </p>
-            <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">daily limit</p>
-          </div>
-
-          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800/80 p-5 shadow-sm">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Completed Interviews</p>
-              <div className="w-9 h-9 rounded-xl bg-brand-50 dark:bg-brand-950/40 text-brand-600 dark:text-brand-400 flex items-center justify-center">
-                {Icons.check}
-              </div>
-            </div>
-            <p className="text-3xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100">
-              {stats?.completedInterviews ?? 0}
-            </p>
-            <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">finished sessions</p>
-          </div>
-
-          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800/80 p-5 shadow-sm">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Overall Score</p>
-              <div className="w-9 h-9 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
-                {Icons.chart}
-              </div>
-            </div>
-            <p className="text-3xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100">
-              {hasData ? overallScore : '—'}
-            </p>
-            <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">current performance</p>
-          </div>
-        </section>
-
-        {/* ─── Empty / New user state ─── */}
-        {!hasData && (
-          <section className="py-8">
-            <Card className="max-w-lg mx-auto p-8 text-center space-y-4">
-              <div className="w-14 h-14 rounded-2xl bg-brand-50 dark:bg-brand-950/40 text-brand-600 dark:text-brand-400 flex items-center justify-center mx-auto">
-                {Icons.lightbulb}
-              </div>
-              <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">
-                Your performance journey starts here
-              </h2>
-              <p className="text-sm text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
-                Complete your first interview to begin building your performance profile and see detailed analytics.
-              </p>
-              <div className="pt-2">
-                <Button
-                  variant="primary"
-                  size="lg"
-                  onClick={() => router.push('/interview/setup')}
-                  icon={Icons.plus}
-                >
-                  Start Your First Interview
-                </Button>
-              </div>
-            </Card>
-          </section>
-        )}
-
-        {/* ─── 3. Performance Overview ─── */}
-        {hasData && (
+        {status === 'unavailable' ? (
+          <ContentError
+            title="Can't reach the server"
+            message="We couldn't verify your session — the backend may be waking up. Check your connection and try again."
+            onRetry={refresh}
+            retryLabel="Retry"
+          />
+        ) : !stats ? (
+          statsError ? (
+            <ContentError title="Something went wrong" message={statsError} onRetry={loadStats} />
+          ) : (
+            <DashboardSkeleton />
+          )
+        ) : (
           <>
-            <Divider />
-            <section className="space-y-6">
-              <div>
-                <h2 className="text-xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100">
-                  Performance Overview
-                </h2>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                  Your aggregated scores across completed interviews.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-                {/* Overall */}
-                <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800/80 p-5 shadow-sm">
-                  <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3">Overall</p>
-                  <p className="text-4xl font-extrabold tracking-tight text-brand-600 dark:text-brand-400">{overallScore}</p>
-                  <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">out of 100</p>
-                  <ProgressBar value={overallScore} color="brand" className="mt-3" />
-                </div>
-
-                {/* Per-category */}
-                {['TECHNICAL', 'HR', 'APTITUDE'].map((type) => {
-                  const score = categoryScores[type] || 0;
-                  const colorMap = { TECHNICAL: 'brand', HR: 'indigo', APTITUDE: 'amber' };
-                  return (
-                    <div key={type} className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800/80 p-5 shadow-sm">
-                      <div className="flex items-center gap-2 mb-3">
-                        <div className="text-slate-400 dark:text-slate-500">{TYPE_ICONS[type]}</div>
-                        <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">{type}</p>
-                      </div>
-                      <p className="text-4xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100">{score || '—'}</p>
-                      <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">{score ? 'out of 100' : 'no data yet'}</p>
-                      <ProgressBar value={score} color={colorMap[type]} className="mt-3" />
-                    </div>
-                  );
-                })}
-              </div>
-            </section>
-          </>
-        )}
-
-        {/* ─── 4. Competency Performance ─── */}
-        {hasData && Object.keys(analytics).length > 0 && (
-          <>
-            <Divider />
-            <section className="space-y-6">
-              <div>
-                <h2 className="text-xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100">
-                  Competency Breakdown
-                </h2>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                  Detailed performance across individual skills.
-                </p>
-              </div>
-
-              <div className="grid sm:grid-cols-3 gap-5">
-                {Object.entries(COMPETENCY_GROUPS).map(([type, keys]) => {
-                  if (!analytics[type]) return null;
-                  const groupData = analytics[type];
-                  const colorMap = { TECHNICAL: 'brand', HR: 'indigo', APTITUDE: 'amber' };
-                  return (
-                    <Card key={type} className="p-5 space-y-4">
-                      <div className="flex items-center gap-2">
-                        <div className="text-slate-400 dark:text-slate-500">{TYPE_ICONS[type]}</div>
-                        <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">{type}</h3>
-                      </div>
-                      <div className="space-y-3">
-                        {keys.map((key) => {
-                          const val = groupData[key] || 0;
-                          return (
-                            <div key={key}>
-                              <div className="flex items-center justify-between mb-1.5">
-                                <span className="text-xs font-medium text-slate-600 dark:text-slate-400">{COMPETENCY_LABELS[key]}</span>
-                                <span className="text-xs font-bold text-slate-900 dark:text-slate-100">{val || '—'}</span>
-                              </div>
-                              <ProgressBar value={val} color={colorMap[type]} />
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </Card>
-                  );
-                })}
-              </div>
-            </section>
-          </>
-        )}
-
-        {/* ─── 5. Interview Activity ─── */}
-        {hasData && (
-          <>
-            <Divider />
-            <section className="space-y-5">
-              <div>
-                <h2 className="text-xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100">
-                  Interview Activity
-                </h2>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                  Total sessions by interview type.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                {[
-                  { type: 'TECHNICAL', label: 'Technical', count: counts.technical || 0, color: 'brand' },
-                  { type: 'HR', label: 'HR', count: counts.hr || 0, color: 'indigo' },
-                  { type: 'APTITUDE', label: 'Aptitude', count: counts.aptitude || 0, color: 'amber' },
-                  { type: 'RESUME', label: 'Resume', count: counts.resume || 0, color: 'emerald' },
-                ].map((item) => (
-                  <div key={item.type} className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800/80 p-4 shadow-sm">
-                    <div className="flex items-center gap-2 mb-2">
-                      <div className="text-slate-400 dark:text-slate-500">{TYPE_ICONS[item.type]}</div>
-                      <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">{item.label}</span>
-                    </div>
-                    <p className="text-2xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100">{item.count}</p>
-                    <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">sessions</p>
+            {/* ─── Active session banner ─── */}
+            {stats.continueSessionId && (
+              <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-brand-600 to-indigo-600 p-5 sm:p-6 text-white shadow-lg">
+                <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none" />
+                <div className="relative flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                  <div>
+                    <h3 className="text-base font-bold">You have an active interview session</h3>
+                    <p className="text-sm text-brand-100 mt-0.5">Resume where you left off to get full feedback on your performance.</p>
                   </div>
-                ))}
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => router.push(`/interview/${stats.continueSessionId}`)}
+                    className="whitespace-nowrap"
+                  >
+                    Continue Session →
+                  </Button>
+                </div>
               </div>
-            </section>
-          </>
-        )}
+            )}
 
-        {/* ─── 6. Recent Interviews ─── */}
-        {hasData && (
-          <>
-            <Divider />
-            <section className="space-y-5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100">
-                    Recent Interviews
-                  </h2>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                    Your latest completed sessions.
-                  </p>
+            {/* ─── 2. Top Summary Cards ─── */}
+            <section className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800/80 p-5 shadow-sm">
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Interviews Left Today</p>
+                  <div className="w-9 h-9 rounded-xl bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 flex items-center justify-center">
+                    {Icons.clock}
+                  </div>
                 </div>
-                <Button variant="ghost" size="sm" onClick={() => router.push('/history')}>
-                  View All History
-                </Button>
-              </div>
-
-              {sessionsLoading ? (
-                <div className="space-y-3">
-                  <CardSkeleton />
-                  <CardSkeleton />
-                </div>
-              ) : recentSessions.length === 0 ? (
-                <Card className="p-6 text-center">
-                  <p className="text-sm text-slate-500 dark:text-slate-400">No completed interviews yet.</p>
-                </Card>
-              ) : (
-                <div className="space-y-2">
-                  {recentSessions.map((session) => {
-                    const id = session.id || session.sessionId;
-                    return (
-                      <div
-                        key={id}
-                        className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 rounded-xl px-5 py-3.5 flex items-center justify-between gap-4 hover:border-slate-300 dark:hover:border-slate-700 transition-all cursor-pointer"
-                        onClick={() => router.push(`/history/${id}`)}
-                        role="button"
-                        tabIndex={0}
-                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') router.push(`/history/${id}`); }}
-                      >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div className="text-slate-400 dark:text-slate-500 flex-shrink-0">{TYPE_ICONS[session.interviewType]}</div>
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2">
-                              <Badge variant={GROUP_COLORS[session.interviewType] || 'default'} className="text-[10px]">
-                                {session.interviewType}
-                              </Badge>
-                              {session.branch && (
-                                <span className="text-xs font-medium text-slate-600 dark:text-slate-400">{titleCase(session.branch)}</span>
-                              )}
-                              {session.difficulty && (
-                                <Badge variant={session.difficulty === 'EASY' ? 'success' : session.difficulty === 'MEDIUM' ? 'warning' : 'danger'} className="text-[10px]">
-                                  {session.difficulty}
-                                </Badge>
-                              )}
-                            </div>
-                            <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">{formatDate(session.createdAt || session.startedAt)}</p>
-                          </div>
-                        </div>
-                        <div className="text-right flex-shrink-0">
-                          <p className="text-sm font-extrabold text-slate-900 dark:text-slate-100">{session.overallAverage ?? '—'}</p>
-                          <p className="text-[10px] text-slate-400 dark:text-slate-500">avg score</p>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </section>
-          </>
-        )}
-
-        {/* ─── 7. Practice Recommendations ─── */}
-        {hasData && (
-          <>
-            <Divider />
-            <section className="space-y-5">
-              <div>
-                <h2 className="text-xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100">
-                  Practice Recommendations
-                </h2>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                  Personalized guidance based on your performance.
+                <p className="text-3xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100">
+                  {stats.interviewsRemainingToday ?? 5}
                 </p>
+                <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">daily limit</p>
               </div>
 
-              <Recommendations categoryScores={categoryScores} />
+              <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800/80 p-5 shadow-sm">
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Completed Interviews</p>
+                  <div className="w-9 h-9 rounded-xl bg-brand-50 dark:bg-brand-950/40 text-brand-600 dark:text-brand-400 flex items-center justify-center">
+                    {Icons.check}
+                  </div>
+                </div>
+                <p className="text-3xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100">
+                  {stats.completedInterviews ?? 0}
+                </p>
+                <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">finished sessions</p>
+              </div>
+
+              <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800/80 p-5 shadow-sm">
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Overall Score</p>
+                  <div className="w-9 h-9 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                    {Icons.chart}
+                  </div>
+                </div>
+                <p className="text-3xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100">
+                  {hasData ? overallScore : '—'}
+                </p>
+                <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">current performance</p>
+              </div>
             </section>
+
+            {/* ─── Empty / New user state ─── */}
+            {!hasData && (
+              <section className="py-8">
+                <Card className="max-w-lg mx-auto p-8 text-center space-y-4">
+                  <div className="w-14 h-14 rounded-2xl bg-brand-50 dark:bg-brand-950/40 text-brand-600 dark:text-brand-400 flex items-center justify-center mx-auto">
+                    {Icons.lightbulb}
+                  </div>
+                  <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">
+                    Your performance journey starts here
+                  </h2>
+                  <p className="text-sm text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
+                    Complete your first interview to begin building your performance profile and see detailed analytics.
+                  </p>
+                  <div className="pt-2">
+                    <Button
+                      variant="primary"
+                      size="lg"
+                      onClick={() => router.push('/interview/setup')}
+                      icon={Icons.plus}
+                    >
+                      Start Your First Interview
+                    </Button>
+                  </div>
+                </Card>
+              </section>
+            )}
+
+            {/* ─── 3. Performance Overview ─── */}
+            {hasData && (
+              <>
+                <Divider />
+                <section className="space-y-6">
+                  <div>
+                    <h2 className="text-xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100">
+                      Performance Overview
+                    </h2>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                      Your aggregated scores across completed interviews.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                    {/* Overall */}
+                    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800/80 p-5 shadow-sm">
+                      <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3">Overall</p>
+                      <p className="text-4xl font-extrabold tracking-tight text-brand-600 dark:text-brand-400">{overallScore}</p>
+                      <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">out of 100</p>
+                      <ProgressBar value={overallScore} color="brand" className="mt-3" />
+                    </div>
+
+                    {/* Per-category */}
+                    {['TECHNICAL', 'HR', 'APTITUDE'].map((type) => {
+                      const score = categoryScores[type] || 0;
+                      const colorMap = { TECHNICAL: 'brand', HR: 'indigo', APTITUDE: 'amber' };
+                      return (
+                        <div key={type} className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800/80 p-5 shadow-sm">
+                          <div className="flex items-center gap-2 mb-3">
+                            <div className="text-slate-400 dark:text-slate-500">{TYPE_ICONS[type]}</div>
+                            <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">{type}</p>
+                          </div>
+                          <p className="text-4xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100">{score || '—'}</p>
+                          <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">{score ? 'out of 100' : 'no data yet'}</p>
+                          <ProgressBar value={score} color={colorMap[type]} className="mt-3" />
+                        </div>
+                      );
+                    })}
+                  </div>
+                </section>
+              </>
+            )}
+
+            {/* ─── 4. Competency Performance ─── */}
+            {hasData && Object.keys(analytics).length > 0 && (
+              <>
+                <Divider />
+                <section className="space-y-6">
+                  <div>
+                    <h2 className="text-xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100">
+                      Competency Breakdown
+                    </h2>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                      Detailed performance across individual skills.
+                    </p>
+                  </div>
+
+                  <div className="grid sm:grid-cols-3 gap-5">
+                    {Object.entries(COMPETENCY_GROUPS).map(([type, keys]) => {
+                      if (!analytics[type]) return null;
+                      const groupData = analytics[type];
+                      const colorMap = { TECHNICAL: 'brand', HR: 'indigo', APTITUDE: 'amber' };
+                      return (
+                        <Card key={type} className="p-5 space-y-4">
+                          <div className="flex items-center gap-2">
+                            <div className="text-slate-400 dark:text-slate-500">{TYPE_ICONS[type]}</div>
+                            <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">{type}</h3>
+                          </div>
+                          <div className="space-y-3">
+                            {keys.map((key) => {
+                              const val = groupData[key] || 0;
+                              return (
+                                <div key={key}>
+                                  <div className="flex items-center justify-between mb-1.5">
+                                    <span className="text-xs font-medium text-slate-600 dark:text-slate-400">{COMPETENCY_LABELS[key]}</span>
+                                    <span className="text-xs font-bold text-slate-900 dark:text-slate-100">{val || '—'}</span>
+                                  </div>
+                                  <ProgressBar value={val} color={colorMap[type]} />
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                </section>
+              </>
+            )}
+
+            {/* ─── 5. Interview Activity ─── */}
+            {hasData && (
+              <>
+                <Divider />
+                <section className="space-y-5">
+                  <div>
+                    <h2 className="text-xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100">
+                      Interview Activity
+                    </h2>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                      Total sessions by interview type.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                    {[
+                      { type: 'TECHNICAL', label: 'Technical', count: counts.technical || 0, color: 'brand' },
+                      { type: 'HR', label: 'HR', count: counts.hr || 0, color: 'indigo' },
+                      { type: 'APTITUDE', label: 'Aptitude', count: counts.aptitude || 0, color: 'amber' },
+                      { type: 'RESUME', label: 'Resume', count: counts.resume || 0, color: 'emerald' },
+                    ].map((item) => (
+                      <div key={item.type} className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800/80 p-4 shadow-sm">
+                        <div className="flex items-center gap-2 mb-2">
+                          <div className="text-slate-400 dark:text-slate-500">{TYPE_ICONS[item.type]}</div>
+                          <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">{item.label}</span>
+                        </div>
+                        <p className="text-2xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100">{item.count}</p>
+                        <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">sessions</p>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              </>
+            )}
+
+            {/* ─── 6. Recent Interviews ─── */}
+            {hasData && (
+              <>
+                <Divider />
+                <section className="space-y-5">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h2 className="text-xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100">
+                        Recent Interviews
+                      </h2>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                        Your latest completed sessions.
+                      </p>
+                    </div>
+                    <Button variant="ghost" size="sm" onClick={() => router.push('/history')}>
+                      View All History
+                    </Button>
+                  </div>
+
+                  {sessionsLoading ? (
+                    <div className="space-y-2">
+                      <RecentRowSkeleton />
+                      <RecentRowSkeleton />
+                      <RecentRowSkeleton />
+                    </div>
+                  ) : sessionsError ? (
+                    <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 rounded-xl p-6 text-center space-y-3">
+                      <p className="text-sm text-slate-500 dark:text-slate-400">Couldn't load your recent interviews.</p>
+                      <Button variant="outline" size="sm" onClick={() => loadSessions()}>Try Again</Button>
+                    </div>
+                  ) : recentSessions.length === 0 ? (
+                    <Card className="p-6 text-center">
+                      <p className="text-sm text-slate-500 dark:text-slate-400">No completed interviews yet.</p>
+                    </Card>
+                  ) : (
+                    <div className="space-y-2">
+                      {recentSessions.map((session) => {
+                        const id = session.id || session.sessionId;
+                        return (
+                          <div
+                            key={id}
+                            className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 rounded-xl px-5 py-3.5 flex items-center justify-between gap-4 hover:border-slate-300 dark:hover:border-slate-700 transition-all cursor-pointer"
+                            onClick={() => router.push(`/history/${id}`)}
+                            role="button"
+                            tabIndex={0}
+                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') router.push(`/history/${id}`); }}
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className="text-slate-400 dark:text-slate-500 flex-shrink-0">{TYPE_ICONS[session.interviewType]}</div>
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <Badge variant={GROUP_COLORS[session.interviewType] || 'default'} className="text-[10px]">
+                                    {session.interviewType}
+                                  </Badge>
+                                  {session.branch && (
+                                    <span className="text-xs font-medium text-slate-600 dark:text-slate-400">{titleCase(session.branch)}</span>
+                                  )}
+                                  {session.difficulty && (
+                                    <Badge variant={session.difficulty === 'EASY' ? 'success' : session.difficulty === 'MEDIUM' ? 'warning' : 'danger'} className="text-[10px]">
+                                      {session.difficulty}
+                                    </Badge>
+                                  )}
+                                </div>
+                                <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">{formatDate(session.createdAt || session.startedAt)}</p>
+                              </div>
+                            </div>
+                            <div className="text-right flex-shrink-0">
+                              <p className="text-sm font-extrabold text-slate-900 dark:text-slate-100">{session.overallAverage ?? '—'}</p>
+                              <p className="text-[10px] text-slate-400 dark:text-slate-500">avg score</p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </section>
+              </>
+            )}
+
+            {/* ─── 7. Practice Recommendations ─── */}
+            {hasData && (
+              <>
+                <Divider />
+                <section className="space-y-5">
+                  <div>
+                    <h2 className="text-xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100">
+                      Practice Recommendations
+                    </h2>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                      Personalized guidance based on your performance.
+                    </p>
+                  </div>
+
+                  <Recommendations categoryScores={categoryScores} />
+                </section>
+              </>
+            )}
           </>
         )}
       </main>
