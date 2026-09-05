@@ -82,25 +82,45 @@ const STATUS_CONFIG = {
 };
 
 /* ─────────────────────────────────────────────
-   Loading skeleton
+   Loading skeletons — shaped to the geometry of the
+   summary stat cards and the session cards they replace.
    ───────────────────────────────────────────── */
+function StatSkeletonCard() {
+  return (
+    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800/80 p-4 shadow-sm space-y-2.5" aria-hidden="true">
+      <div className="h-2.5 w-14 rounded-full bg-slate-200 dark:bg-slate-800 animate-pulse" />
+      <div className="h-7 w-10 rounded-md bg-slate-200 dark:bg-slate-800 animate-pulse" />
+      <div className="h-2.5 w-16 rounded-full bg-slate-200 dark:bg-slate-800 animate-pulse" />
+    </div>
+  );
+}
+
 function SkeletonCard() {
   return (
-    <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 rounded-2xl p-5 shadow-sm space-y-3">
-      <div className="flex items-center gap-2">
-        <div className="h-5 w-16 rounded-full bg-slate-200 dark:bg-slate-800 animate-pulse" />
-        <div className="h-5 w-12 rounded-full bg-slate-200 dark:bg-slate-800 animate-pulse" />
-        <div className="h-5 w-14 rounded-full bg-slate-200 dark:bg-slate-800 animate-pulse" />
+    <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 rounded-2xl p-5 shadow-sm space-y-4" aria-hidden="true">
+      {/* Top row: type icon + badges (left), score (right) */}
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="h-4 w-4 rounded bg-slate-200 dark:bg-slate-800 animate-pulse" />
+          <div className="h-5 w-16 rounded-full bg-slate-200 dark:bg-slate-800 animate-pulse" />
+          <div className="h-5 w-14 rounded-full bg-slate-200 dark:bg-slate-800 animate-pulse" />
+        </div>
+        <div className="text-right flex-shrink-0 space-y-1.5">
+          <div className="h-6 w-12 rounded bg-slate-200 dark:bg-slate-800 animate-pulse ml-auto" />
+          <div className="h-2.5 w-14 rounded-full bg-slate-200 dark:bg-slate-800 animate-pulse ml-auto" />
+        </div>
       </div>
-      <div className="flex items-center justify-between">
-        <div className="space-y-2 w-2/3">
-          <div className="h-4 w-3/4 rounded bg-slate-200 dark:bg-slate-800 animate-pulse" />
-          <div className="h-3 w-1/2 rounded bg-slate-200 dark:bg-slate-800 animate-pulse" />
-        </div>
-        <div className="flex gap-2">
-          <div className="h-8 w-16 rounded-xl bg-slate-200 dark:bg-slate-800 animate-pulse" />
-          <div className="h-8 w-16 rounded-xl bg-slate-200 dark:bg-slate-800 animate-pulse" />
-        </div>
+      {/* Middle: meta chips (answers / evaluated / date) */}
+      <div className="flex items-center gap-4">
+        <div className="h-3 w-20 rounded-full bg-slate-200 dark:bg-slate-800 animate-pulse" />
+        <div className="h-3 w-24 rounded-full bg-slate-200 dark:bg-slate-800 animate-pulse" />
+        <div className="h-3 w-24 rounded-full bg-slate-200 dark:bg-slate-800 animate-pulse" />
+      </div>
+      {/* Actions row */}
+      <div className="flex items-center gap-2">
+        <div className="h-8 w-20 rounded-xl bg-slate-200 dark:bg-slate-800 animate-pulse" />
+        <div className="h-8 w-20 rounded-xl bg-slate-200 dark:bg-slate-800 animate-pulse" />
+        <div className="h-8 w-9 rounded-xl bg-slate-200 dark:bg-slate-800 animate-pulse ml-auto" />
       </div>
     </div>
   );
@@ -307,16 +327,23 @@ export default function HistoryPage() {
           </Button>
         </section>
 
-        {/* ─── Error (non-auth failures only) ─── */}
-        {error && !authRequired && (
+        {/* ─── Error banner (non-auth, only when a session list is still shown) ─── */}
+        {error && !authRequired && summary.hasData && (
           <div role="alert" className="p-4 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 rounded-2xl text-sm flex items-center justify-between gap-3">
-            <span>{error}</span>
+            <span>Something went wrong while refreshing your history.</span>
             <Button variant="outline" size="sm" onClick={() => load()}>Retry</Button>
           </div>
         )}
 
         {/* ─── 2. Summary Stats ─── */}
-        {summary.hasData && (
+        {loading ? (
+          <section className="grid grid-cols-2 sm:grid-cols-4 gap-4" aria-busy="true" aria-label="Loading your stats">
+            <StatSkeletonCard />
+            <StatSkeletonCard />
+            <StatSkeletonCard />
+            <StatSkeletonCard />
+          </section>
+        ) : summary.hasData && (
           <section className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800/80 p-4 shadow-sm">
               <p className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Total</p>
@@ -377,11 +404,29 @@ export default function HistoryPage() {
             </div>
           </Card>
         ) : loading ? (
-          <div className="space-y-3">
+          <div className="space-y-3" aria-busy="true" aria-label="Loading your history">
             {Array.from({ length: 4 }).map((_, i) => (
               <SkeletonCard key={i} />
             ))}
           </div>
+        ) : error && !authRequired ? (
+          /* ─── Friendly error (no raw backend messages) ─── */
+          <Card className="max-w-lg mx-auto p-10 text-center space-y-4">
+            <div className="w-16 h-16 bg-rose-50 dark:bg-rose-950/40 rounded-2xl flex items-center justify-center mx-auto text-rose-500 dark:text-rose-400">
+              <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+              </svg>
+            </div>
+            <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">
+              Couldn't load your history
+            </h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
+              Something went wrong while fetching your sessions. Check your connection and try again.
+            </p>
+            <div className="pt-2">
+              <Button variant="primary" size="lg" onClick={() => load()}>Try Again</Button>
+            </div>
+          </Card>
         ) : !summary.hasData ? (
           /* ─── Empty State ─── */
           <Card className="max-w-lg mx-auto p-10 text-center space-y-4">

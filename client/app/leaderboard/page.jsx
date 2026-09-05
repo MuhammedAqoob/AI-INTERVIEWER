@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { leaderboard } from '../../lib/api';
-import { Spinner, Card, Button } from '../../components/ui';
+import { Button, Card } from '../../components/ui';
 import TopNav from '../../components/TopNav';
 import { useAuth } from '../../components/AuthProvider';
 
@@ -33,24 +33,37 @@ const MEDALS = {
    ───────────────────────────────────────────── */
 function LeaderboardSkeleton() {
   return (
-    <div className="space-y-3">
-      {Array.from({ length: 5 }).map((_, i) => (
-        <div key={i} className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 rounded-2xl p-5 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-800 animate-pulse" />
-              <div className="space-y-2">
-                <div className="h-4 w-24 rounded bg-slate-200 dark:bg-slate-800 animate-pulse" />
-                <div className="h-3 w-32 rounded bg-slate-200 dark:bg-slate-800 animate-pulse" />
+    <div className="space-y-8" aria-busy="true" aria-label="Loading the leaderboard">
+      {/* Podium — mirrors the real top-3 columns (2nd · 1st · 3rd visual order) */}
+      <section className="grid grid-cols-3 gap-4 max-w-2xl mx-auto">
+        {[0, 1, 2].map((i) => (
+          <div key={i} className={`flex flex-col items-center ${i === 1 ? 'pt-0' : i === 2 ? 'pt-6' : 'pt-4'}`}>
+            <div className={`${i === 1 ? 'w-16 h-16' : 'w-14 h-14'} rounded-full bg-slate-200 dark:bg-slate-800 animate-pulse mb-3`} />
+            <div className="h-3.5 w-20 rounded-full bg-slate-200 dark:bg-slate-800 animate-pulse" />
+            <div className="h-7 w-12 rounded-md bg-slate-200 dark:bg-slate-800 animate-pulse mt-2" />
+            <div className="h-2.5 w-14 rounded-full bg-slate-200 dark:bg-slate-800 animate-pulse mt-1.5" />
+          </div>
+        ))}
+      </section>
+
+      {/* Ranking rows — same geometry as the real list rows below the podium */}
+      <section className="space-y-2 max-w-3xl mx-auto">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 rounded-xl px-5 py-3.5 flex items-center justify-between gap-4 shadow-sm">
+            <div className="flex items-center gap-3 min-w-0 flex-1">
+              <div className="w-8 h-8 rounded-lg bg-slate-200 dark:bg-slate-800 animate-pulse flex-shrink-0" />
+              <div className="min-w-0 flex-1 space-y-2">
+                <div className="h-3.5 w-28 rounded-full bg-slate-200 dark:bg-slate-800 animate-pulse" />
+                <div className="h-2.5 w-44 max-w-full rounded-full bg-slate-200 dark:bg-slate-800 animate-pulse" />
               </div>
             </div>
-            <div className="space-y-1 text-right">
-              <div className="h-6 w-12 rounded bg-slate-200 dark:bg-slate-800 animate-pulse ml-auto" />
-              <div className="h-3 w-16 rounded bg-slate-200 dark:bg-slate-800 animate-pulse ml-auto" />
+            <div className="text-right flex-shrink-0 space-y-1.5">
+              <div className="h-5 w-10 rounded bg-slate-200 dark:bg-slate-800 animate-pulse ml-auto" />
+              <div className="h-2.5 w-8 rounded-full bg-slate-200 dark:bg-slate-800 animate-pulse ml-auto" />
             </div>
           </div>
-        </div>
-      ))}
+        ))}
+      </section>
     </div>
   );
 }
@@ -66,9 +79,15 @@ export default function LeaderboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const currentUser = user?.username || null;
+  const loadedRef = useRef(false);
 
+  // Load once per mount (dev StrictMode double-invokes effects — guard so the
+  // public leaderboard request is never fired twice).
   useEffect(() => {
+    if (loadedRef.current) return;
+    loadedRef.current = true;
     load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const load = async () => {
@@ -78,7 +97,7 @@ export default function LeaderboardPage() {
       const lbRes = await leaderboard.list(50);
       setRows(lbRes.data || []);
     } catch (err) {
-      setError(err.message || 'Failed to load leaderboard.');
+      setError('Failed to load the leaderboard. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -111,16 +130,32 @@ export default function LeaderboardPage() {
           )}
         </section>
 
-        {/* ─── Error ─── */}
-        {error && (
+        {/* ─── Error banner (only when stale rows are still shown below) ─── */}
+        {error && rows.length > 0 && (
           <div role="alert" className="p-4 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 rounded-2xl text-sm flex items-center justify-between gap-3">
-            <span>{error}</span>
+            <span>Couldn't refresh the leaderboard. Showing your last loaded results.</span>
             <Button variant="outline" size="sm" onClick={load}>Retry</Button>
           </div>
         )}
 
         {loading ? (
           <LeaderboardSkeleton />
+        ) : error ? (
+          /* ─── Friendly error (no raw backend messages) ─── */
+          <Card className="max-w-lg mx-auto p-10 text-center space-y-4">
+            <div className="w-16 h-16 bg-rose-50 dark:bg-rose-950/40 rounded-2xl flex items-center justify-center mx-auto text-rose-500 dark:text-rose-400">
+              {Icons.trophy}
+            </div>
+            <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">
+              Couldn't load the leaderboard
+            </h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
+              Something went wrong while fetching the rankings. Check your connection and try again.
+            </p>
+            <div className="pt-2">
+              <Button variant="primary" onClick={load}>Try Again</Button>
+            </div>
+          </Card>
         ) : rows.length === 0 ? (
           /* ─── Empty State ─── */
           <Card className="max-w-lg mx-auto p-10 text-center space-y-4">
