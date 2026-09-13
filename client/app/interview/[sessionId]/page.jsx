@@ -4,16 +4,42 @@ import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { interview } from '../../../lib/api';
 import { Spinner, DifficultyBadge, Button, Textarea, Modal, Card } from '../../../components/ui';
+import { useAuth } from '../../../components/AuthProvider';
+
+function BetterAnswer({ betterAnswer }) {
+  const [open, setOpen] = useState(false);
+  if (!betterAnswer) return null;
+  return (
+    <div className="mt-1.5">
+      <button
+        onClick={() => setOpen(!open)}
+        className="text-[11px] font-medium text-brand-600 dark:text-brand-400 hover:text-brand-700 dark:hover:text-brand-300 transition-colors cursor-pointer select-none"
+      >
+        {open ? '▾ Hide better answer' : '▸ Better answer'}
+      </button>
+      {open && (
+        <div className="mt-1.5 p-3 bg-brand-50 dark:bg-brand-950/40 border border-brand-200/60 dark:border-brand-800/60 rounded-xl text-xs text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-wrap">
+          {betterAnswer}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function InterviewRoomPage() {
   const router = useRouter();
   const { sessionId } = useParams();
+  const { markGuest } = useAuth();
   const [data, setData] = useState(null);
   const [answer, setAnswer] = useState('');
   const [sending, setSending] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [showLeaveModal, setShowLeaveModal] = useState(false);
   const [error, setError] = useState('');
+
+  const isCompleted = data?.status === 'COMPLETED';
+  const isPaused = data?.status === 'PAUSED';
+  const isActive = data?.status === 'ACTIVE';
 
   const load = async () => {
     setError('');
@@ -24,14 +50,12 @@ export default function InterviewRoomPage() {
       }
       setData(res.data);
     } catch (err) {
-      // 401 → login flow; 403/404 → session unreachable → back to the list.
       if (err?.status === 401) {
+        markGuest();
         router.push('/login');
       } else if (err?.status === 403 || err?.status === 404) {
         router.push('/history');
       } else {
-        // Network / 5xx / unknown → friendly state rendered ABOVE the loading
-        // view so a failed load can never leave the room on an infinite spinner.
         setError("Couldn't load this interview. Please try again.");
       }
     }
@@ -44,7 +68,7 @@ export default function InterviewRoomPage() {
   const handlePauseAndLeave = async () => {
     setActionLoading(true);
     try {
-      if (data?.status === 'ACTIVE') {
+      if (isActive) {
         await interview.pause(sessionId);
       }
       router.push('/dashboard');
@@ -95,7 +119,7 @@ export default function InterviewRoomPage() {
     }
   };
 
-  const isNonResumeActive = data?.status === 'ACTIVE' && data?.interviewType !== 'RESUME';
+  const isNonResumeActive = isActive && data?.interviewType !== 'RESUME';
 
   const submit = async () => {
     if (!answer.trim() || sending) return;
@@ -115,8 +139,6 @@ export default function InterviewRoomPage() {
     }
   };
 
-  // A failed load must take precedence over the generic "connecting" view:
-  // without this branch, !data would leave a non-auth failure on an infinite spinner.
   if (!data && error) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 p-4">
@@ -139,7 +161,7 @@ export default function InterviewRoomPage() {
       <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
         <div className="flex items-center gap-3 text-sm font-medium text-slate-500 dark:text-slate-400">
           <Spinner className="w-6 h-6 text-brand-600 dark:text-brand-400" />
-          <span>Connecting to AI Interview Room...</span>
+          <span>{isCompleted ? 'Loading interview transcript...' : 'Connecting to AI Interview Room...'}</span>
         </div>
       </div>
     );
@@ -152,26 +174,45 @@ export default function InterviewRoomPage() {
       {/* Header Navigation Bar */}
       <header className="sticky top-0 z-30 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800/80 shadow-sm">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setShowLeaveModal(true)}
-            icon={
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-            }
-          >
-            Leave Chat
-          </Button>
+          {isCompleted ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => router.push('/history')}
+              icon={
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              }
+            >
+              Back to History
+            </Button>
+          ) : (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowLeaveModal(true)}
+              icon={
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              }
+            >
+              Leave Chat
+            </Button>
+          )}
 
           <div className="flex items-center gap-2">
             <span className="text-xs font-semibold px-2.5 py-1 bg-brand-50 dark:bg-brand-950 text-brand-700 dark:text-brand-300 rounded-full border border-brand-200/60 dark:border-brand-800/60">
               {data.interviewType}
             </span>
-            <span className="text-sm font-bold text-slate-700 dark:text-slate-300">
-              Question {data.currentQuestionNumber || answers.length + 1} / {data.questionLimit}
-            </span>
+            {isCompleted ? (
+              <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">Completed</span>
+            ) : (
+              <span className="text-sm font-bold text-slate-700 dark:text-slate-300">
+                Question {data.currentQuestionNumber || answers.length + 1} / {data.questionLimit}
+              </span>
+            )}
           </div>
         </div>
       </header>
@@ -215,6 +256,8 @@ export default function InterviewRoomPage() {
                     {item.userAnswer}
                   </div>
 
+                  <BetterAnswer betterAnswer={item.betterAnswer} />
+
                   {item.analytics && (
                     <div className="flex flex-wrap justify-end gap-1.5 pt-1">
                       {Object.entries(item.analytics).map(([key, val]) => (
@@ -232,8 +275,8 @@ export default function InterviewRoomPage() {
             </div>
           ))}
 
-          {/* Current Active AI Question Prompt (Left Aligned Bubble) */}
-          {data.currentQuestion && (
+          {/* Current Active AI Question Prompt (Left Aligned Bubble) — only for active/paused sessions */}
+          {!isCompleted && data.currentQuestion && (
             <div className="space-y-6 pt-2">
               <div className="flex items-start gap-3 max-w-[90%] sm:max-w-[80%] animate-in fade-in duration-300">
                 <div className="w-8 h-8 rounded-full bg-brand-600 dark:bg-brand-500 text-white font-black text-xs flex items-center justify-center flex-shrink-0 shadow-md">
@@ -284,62 +327,71 @@ export default function InterviewRoomPage() {
               </div>
             </div>
           )}
+
+          {/* Completed session end state */}
+          {isCompleted && (
+            <div className="text-center py-4">
+              <p className="text-sm text-slate-500 dark:text-slate-400">This interview has been completed.</p>
+            </div>
+          )}
         </div>
       </main>
 
-      {/* Leave Chat Action Alert Modal */}
-      <Modal
-        open={showLeaveModal}
-        onClose={() => setShowLeaveModal(false)}
-        title="Leave Interview?"
-        description="Pause to resume later, complete to get your evaluation, or delete to remove this session entirely."
-      >
-        <div className="flex flex-col sm:flex-row gap-2 justify-end mt-6">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setShowLeaveModal(false)}
-            disabled={actionLoading}
-          >
-            Cancel
-          </Button>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={handlePauseAndLeave}
-            loading={actionLoading}
-          >
-            Pause & Leave
-          </Button>
-          {isNonResumeActive && (
+      {/* Leave Chat Modal — only for active/paused sessions */}
+      {!isCompleted && (
+        <Modal
+          open={showLeaveModal}
+          onClose={() => setShowLeaveModal(false)}
+          title="Leave Interview?"
+          description="Pause to resume later, complete to get your evaluation, or delete to remove this session entirely."
+        >
+          <div className="flex flex-col sm:flex-row gap-2 justify-end mt-6">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowLeaveModal(false)}
+              disabled={actionLoading}
+            >
+              Cancel
+            </Button>
             <Button
               variant="secondary"
               size="sm"
-              onClick={handleRetake}
+              onClick={handlePauseAndLeave}
               loading={actionLoading}
             >
-              Retake Interview
+              Pause & Leave
             </Button>
-          )}
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={handleCompleteAndLeave}
-            loading={actionLoading}
-          >
-            Complete & Leave
-          </Button>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={handleDeleteAndLeave}
-            loading={actionLoading}
-            className="text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950 border-rose-200 dark:border-rose-800"
-          >
-            Delete & Leave
-          </Button>
-        </div>
-      </Modal>
+            {isNonResumeActive && (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={handleRetake}
+                loading={actionLoading}
+              >
+                Retake Interview
+              </Button>
+            )}
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={handleCompleteAndLeave}
+              loading={actionLoading}
+            >
+              Complete & Leave
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={handleDeleteAndLeave}
+              loading={actionLoading}
+              className="text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950 border-rose-200 dark:border-rose-800"
+            >
+              Delete & Leave
+            </Button>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

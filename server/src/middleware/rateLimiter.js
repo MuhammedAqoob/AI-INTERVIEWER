@@ -7,6 +7,11 @@ const interviewStartLimit = parseInt(
 const loginLimiter = rateLimit({
     windowMs: 5 * 60 * 1000,
     max: 5,
+    // Composite key: IP + username. Prevents credential stuffing (same IP
+    // trying many usernames) while keeping per-username attempts bounded.
+    // Runs before authenticate, so req.user is unavailable — username comes
+    // from the validated login body.
+    keyGenerator: (req) => `${req.ip}:${req.body?.username || 'unknown'}`,
     standardHeaders: true,
     legacyHeaders: false,
     handler: (req, res) => {
@@ -20,6 +25,10 @@ const loginLimiter = rateLimit({
 const registerLimiter = rateLimit({
     windowMs: 10 * 60 * 1000,
     max: 5,
+    // Composite key: IP + username. Prevents bulk account creation from one
+    // IP while allowing legitimate multi-account scenarios. Runs before
+    // authenticate, so req.user is unavailable.
+    keyGenerator: (req) => `${req.ip}:${req.body?.username || 'unknown'}`,
     standardHeaders: true,
     legacyHeaders: false,
     handler: (req, res) => {
@@ -49,6 +58,9 @@ const interviewStartLimiter = rateLimit({
 const interviewAnswerLimiter = rateLimit({
     windowMs: 60 * 1000,
     max: 20,
+    // Runs after authenticate — each user gets an independent bucket so
+    // different users sharing a Vercel proxy IP are not throttled together.
+    keyGenerator: (req) => req.user?.id || 'unauthenticated-answer',
     standardHeaders: true,
     legacyHeaders: false,
     handler: (req, res) => {
@@ -62,6 +74,8 @@ const interviewAnswerLimiter = rateLimit({
 const interviewDeleteLimiter = rateLimit({
     windowMs: 60 * 1000,
     max: 20,
+    // Runs after authenticate — user-based bucket.
+    keyGenerator: (req) => req.user?.id || 'unauthenticated-delete',
     standardHeaders: true,
     legacyHeaders: false,
     handler: (req, res) => {
@@ -75,6 +89,8 @@ const interviewDeleteLimiter = rateLimit({
 const interviewStatusLimiter = rateLimit({
     windowMs: 60 * 1000,
     max: 100,
+    // Runs after authenticate — user-based bucket.
+    keyGenerator: (req) => req.user?.id || 'unauthenticated-status',
     standardHeaders: true,
     legacyHeaders: false,
     handler: (req, res) => {
@@ -88,6 +104,8 @@ const interviewStatusLimiter = rateLimit({
 const dashboardLimiter = rateLimit({
     windowMs: 60 * 1000,
     max: 30,
+    // Runs after authenticate — user-based bucket.
+    keyGenerator: (req) => req.user?.id || 'unauthenticated-dashboard',
     standardHeaders: true,
     legacyHeaders: false,
     handler: (req, res) => {

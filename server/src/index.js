@@ -16,6 +16,10 @@ const performanceService = require('./services/performanceService');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// Trust the first proxy (Vercel) so req.ip reflects the real client IP.
+// Required for IP-based rate limiting behind a reverse proxy.
+app.set('trust proxy', 1);
+
 // Middleware
 app.use(cors(corsOptions));
 // gzip JSON/text responses above the default 1 KB threshold. Transparent to

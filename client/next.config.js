@@ -2,8 +2,10 @@
 const nextConfig = {
   reactStrictMode: true,
   async rewrites() {
-    // In production, the client calls the backend directly via NEXT_PUBLIC_API_URL.
-    // The proxy only applies in local development where /api proxied to localhost:5000.
+    // Local development only: proxy /api/* to the local Express backend.
+    // Production uses the Route Handler at app/api/[...proxy]/route.js
+    // which forwards to BACKEND_URL with proper cookie management.
+    if (process.env.NODE_ENV === 'production') return [];
     const backendUrl = process.env.BACKEND_URL || 'http://localhost:5000';
     return [
       {

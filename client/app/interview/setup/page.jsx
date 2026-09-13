@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { interview } from '../../../lib/api';
 import { Button, Card, Spinner } from '../../../components/ui';
+import { useAuth } from '../../../components/AuthProvider';
 
 const INTERVIEW_TYPE_ICONS = {
   TECHNICAL: (
@@ -37,10 +38,11 @@ const BRANCH_ICONS = {
 };
 
 const ALLOWED_FILE_TYPES = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
-const MAX_FILE_SIZE = 5 * 1024 * 1024;
+const MAX_FILE_SIZE = 4 * 1024 * 1024;
 
 export default function InterviewSetupPage() {
   const router = useRouter();
+  const { markGuest } = useAuth();
   const [options, setOptions] = useState({ branches: [], interviewTypes: [] });
   const [selectedType, setSelectedType] = useState(null);
   const [selectedBranch, setSelectedBranch] = useState(null);
@@ -69,6 +71,7 @@ export default function InterviewSetupPage() {
       // 401 means no valid session — route to login instead of showing the
       // backend's raw "Access denied" message.
       if (err?.status === 401) {
+        markGuest();
         router.replace('/login');
         return;
       }
@@ -92,7 +95,7 @@ export default function InterviewSetupPage() {
     }
 
     if (file.size > MAX_FILE_SIZE) {
-      setError('File too large. Maximum size is 5MB.');
+      setError('File too large. Maximum size is 4MB.');
       e.target.value = '';
       return;
     }
@@ -289,7 +292,7 @@ export default function InterviewSetupPage() {
                 2. Upload Resume File
               </h2>
               <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-                PDF, JPEG, or PNG format up to 5MB
+                PDF, JPEG, or PNG format up to 4MB
               </p>
             </div>
 
@@ -333,7 +336,7 @@ export default function InterviewSetupPage() {
                       </svg>
                     </div>
                     <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Click or drag file to upload</p>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">Supports PDF, JPG, PNG (max 5MB)</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">Supports PDF, JPG, PNG (max 4MB)</p>
                   </div>
                 )}
               </label>

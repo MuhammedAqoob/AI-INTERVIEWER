@@ -8,7 +8,7 @@ const ALLOWED_MIME_TYPES = [
   'image/png',
 ];
 
-const MAX_FILE_SIZE = 5 * 1024 * 1024;
+const MAX_FILE_SIZE = 4 * 1024 * 1024;
 
 const storage = multer.memoryStorage();
 
@@ -31,7 +31,7 @@ const upload = multer({
 function handleMulterError(err, req, res, next) {
   if (err instanceof multer.MulterError) {
     if (err.code === 'LIMIT_FILE_SIZE') {
-      return next(new AppError('File too large. Maximum size is 5MB.', 400));
+      return next(new AppError('File too large. Maximum size is 4MB.', 400));
     }
     return next(new AppError('File upload error.', 400));
   }
