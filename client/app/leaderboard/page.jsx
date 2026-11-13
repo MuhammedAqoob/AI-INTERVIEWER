@@ -277,10 +277,10 @@ export default function LeaderboardPage() {
                           type="button"
                           onClick={() => openCompare(row.username)}
                           aria-label={`Compare with ${row.username}`}
-                          className="hidden sm:inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
+                          className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
                         >
                           {Icons.compare}
-                          Compare
+                          <span className="hidden sm:inline">Compare</span>
                         </button>
                         <div className="text-right flex-shrink-0">
                           <p className="text-lg font-extrabold tracking-tight text-slate-900 dark:text-slate-100">{row.averageScore}</p>
