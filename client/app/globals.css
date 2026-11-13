@@ -208,3 +208,50 @@ html.motion .demo-gated-root { opacity: 0; }
     animation: none !important;
   }
 }
+
+/* ═══ Interview voice-stage visualizer ═══ */
+/* Radial bars that pulse outward from the orb while the AI is speaking or the
+   candidate is recording. Idle bars rest at a short, static length. */
+@keyframes fx-bar {
+  0%, 100% { transform: scaleY(0.35); }
+  50%      { transform: scaleY(1.1); }
+}
+
+.voice-bar {
+  transform-origin: bottom center;
+  transform: scaleY(0.35);
+  will-change: transform;
+}
+
+.voice-bar--active {
+  animation: fx-bar var(--bar-dur, 0.9s) ease-in-out var(--bar-delay, 0s) infinite;
+}
+
+/* Concentric ripples + breathing orb shown around the AI avatar while it is
+   speaking or the candidate is recording. Work on all screen sizes. */
+@keyframes fx-ripple {
+  0%   { transform: scale(1);   opacity: 0.55; }
+  100% { transform: scale(1.9); opacity: 0; }
+}
+.fx-ripple {
+  animation: fx-ripple 1.8s ease-out infinite;
+}
+
+@keyframes fx-orb {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.06); }
+}
+.fx-orb {
+  animation: fx-orb 1.5s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .voice-bar--active {
+    animation: none !important;
+    transform: scaleY(0.6) !important;
+  }
+  .fx-ripple,
+  .fx-orb {
+    animation: none !important;
+  }
+}

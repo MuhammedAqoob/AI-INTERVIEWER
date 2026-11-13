@@ -1,5 +1,6 @@
 import './globals.css';
 import { ThemeProvider } from '../components/ThemeProvider';
+import { SpeechSettingsProvider } from '../components/SpeechSettingsProvider';
 import { AuthProvider } from '../components/AuthProvider';
 import PageTransition from '../components/PageTransition';
 
@@ -20,9 +21,11 @@ export default function RootLayout({ children }) {
       <body className="bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 min-h-screen transition-colors duration-200">
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
         <ThemeProvider>
-          <AuthProvider>
-            <PageTransition>{children}</PageTransition>
-          </AuthProvider>
+          <SpeechSettingsProvider>
+            <AuthProvider>
+              <PageTransition>{children}</PageTransition>
+            </AuthProvider>
+          </SpeechSettingsProvider>
         </ThemeProvider>
       </body>
     </html>
