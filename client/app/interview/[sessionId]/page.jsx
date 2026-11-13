@@ -13,6 +13,31 @@ import VoiceSettingsMenu from '../../../components/VoiceControls';
 // Time limit: 2 minutes per question
 const MINUTES_PER_QUESTION = 2;
 
+// Playful "thinking" phrases shown while an answer is being evaluated, so the
+// wait feels like a chat companion mulling it over rather than a blank spinner.
+const EVAL_PHRASES = [
+  'combobulating',
+  'building sentience',
+  'consulting the vibes',
+  'counting neurons',
+  'reticulating splines',
+  'warming up the brain',
+  'overthinking this beautifully',
+  'cross-referencing the multiverse',
+  'asking the rubber duck',
+  'untangling your thoughts',
+  'doing mental push-ups',
+  'sharpening the pencil',
+  'brewing a fresh opinion',
+  'simulating a thousand interviews',
+  'gathering good energy',
+  'polishing the feedback',
+];
+
+function pickEvalPhrase() {
+  return EVAL_PHRASES[Math.floor(Math.random() * EVAL_PHRASES.length)];
+}
+
 function getTimeLimitMs(questionLimit) {
   return questionLimit * MINUTES_PER_QUESTION * 60 * 1000;
 }
@@ -231,7 +256,7 @@ function VoiceVisualizer({ active }) {
 }
 
 // Circular call-control button used along the bottom of the stage.
-function StageButton({ label, onClick, active = false, danger = false, disabled = false, children }) {
+function StageButton({ label, onClick, active = false, danger = false, brand = false, disabled = false, children }) {
   return (
     <button
       type="button"
@@ -242,8 +267,8 @@ function StageButton({ label, onClick, active = false, danger = false, disabled 
       className={`inline-flex items-center justify-center w-12 h-12 rounded-full border shadow-sm transition-all duration-200 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 disabled:opacity-40 disabled:pointer-events-none ${
         danger
           ? 'bg-rose-500 hover:bg-rose-600 text-white border-rose-500'
-          : active
-            ? 'bg-brand-600 text-white border-brand-600'
+          : active || brand
+            ? 'bg-brand-600 hover:bg-brand-700 text-white border-brand-600'
             : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:text-brand-600 dark:hover:text-brand-400'
       }`}
     >
@@ -278,12 +303,14 @@ export default function InterviewRoomPage() {
   const [error, setError] = useState('');
   const [showLeaveModal, setShowLeaveModal] = useState(false);
   const [pauseOffset, setPauseOffset] = useState(0);
+  const [evalPhrase, setEvalPhrase] = useState('');
 
   const { autoSpeak } = useSpeechSettings();
   const speech = useSpeechSynthesis();
   const spokenRef = useRef(null);
   const prevAutoSpeakRef = useRef(autoSpeak);
   const speechBaseRef = useRef('');
+  const feedRef = useRef(null);
 
   const handleTranscript = useCallback((spoken) => {
     const base = speechBaseRef.current;
@@ -322,6 +349,12 @@ export default function InterviewRoomPage() {
   useEffect(() => {
     load();
   }, [sessionId]);
+
+  // Keep the newest message (and the "thinking" bubble) in view as the chat grows.
+  useEffect(() => {
+    const el = feedRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [data?.answers?.length, sending, data?.currentQuestionNumber]);
 
   const handleTimeUp = useCallback(async () => {
     speech.stop();
@@ -405,6 +438,7 @@ export default function InterviewRoomPage() {
   const submit = async () => {
     if (!answer.trim() || sending) return;
     setSending(true);
+    setEvalPhrase(pickEvalPhrase());
     speech.stop();
     recognition.stop();
     try {
@@ -593,6 +627,7 @@ export default function InterviewRoomPage() {
               <StageButton
                 label={recognition.listening ? 'Stop voice input' : 'Answer with voice'}
                 danger={recognition.listening}
+                brand
                 disabled={!recognition.supported || sending}
                 onClick={toggleMic}
               >
@@ -646,7 +681,7 @@ export default function InterviewRoomPage() {
         </header>
 
         {/* Message feed */}
-        <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3 space-y-4 sm:px-5 sm:py-4 sm:space-y-5">
+        <div ref={feedRef} className="flex-1 min-h-0 overflow-y-auto px-4 py-3 space-y-4 sm:px-5 sm:py-4 sm:space-y-5">
           {error && (
             <div role="alert" className="p-3 bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 rounded-xl text-xs">
               {error}
@@ -727,6 +762,26 @@ export default function InterviewRoomPage() {
               </div>
             </div>
           )}
+
+          {/* Evaluation "thinking" bubble — shown while the answer is being scored */}
+          {sending && (
+            <div className="flex items-start gap-2.5 fx-enter">
+              <AiAvatar />
+              <div className="min-w-0 max-w-[85%]">
+                <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 mb-1">
+                  AI Interviewer
+                </p>
+                <div className="inline-flex items-center gap-2.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-sm leading-relaxed px-3.5 py-3 rounded-xl rounded-tl-sm">
+                  <span className="flex items-center gap-1" aria-hidden="true">
+                    <span className="w-1.5 h-1.5 rounded-full bg-slate-400 dark:bg-slate-500 animate-bounce" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-slate-400 dark:bg-slate-500 animate-bounce [animation-delay:0.15s]" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-slate-400 dark:bg-slate-500 animate-bounce [animation-delay:0.3s]" />
+                  </span>
+                  <span className="italic">{evalPhrase || 'thinking'}…</span>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Answer composer */}
@@ -748,7 +803,13 @@ export default function InterviewRoomPage() {
               rows={2}
               value={answer}
               onChange={(e) => setAnswer(e.target.value)}
-              placeholder="Type your answer, or tap the mic to speak…"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  submit();
+                }
+              }}
+              placeholder="Type your answer, or tap the mic to speak… (Enter to send, Shift+Enter for a new line)"
               maxLength={5000}
             />
 
@@ -779,7 +840,7 @@ export default function InterviewRoomPage() {
                   className={`inline-flex items-center justify-center w-11 h-11 rounded-full border transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 active:scale-95 disabled:opacity-40 disabled:pointer-events-none ${
                     recognition.listening
                       ? 'bg-rose-500 text-white border-rose-500 shadow-md shadow-rose-500/30 animate-pulse'
-                      : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:text-brand-600 dark:hover:text-brand-400 hover:border-brand-300 dark:hover:border-brand-700'
+                      : 'bg-brand-600 hover:bg-brand-700 text-white border-brand-600 shadow-sm'
                   }`}
                 >
                   {recognition.listening ? (
@@ -799,8 +860,7 @@ export default function InterviewRoomPage() {
               <Button
                 variant="primary"
                 size="md"
-                loading={sending}
-                disabled={!answer.trim() || answer.length > 5000}
+                disabled={!answer.trim() || answer.length > 5000 || sending}
                 onClick={submit}
                 icon={
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -808,7 +868,7 @@ export default function InterviewRoomPage() {
                   </svg>
                 }
               >
-                {sending ? 'Evaluating...' : 'Send Answer'}
+                Send Answer
               </Button>
             </div>
           </div>
