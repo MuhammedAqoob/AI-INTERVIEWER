@@ -34,8 +34,9 @@ const EVAL_PHRASES = [
   'polishing the feedback',
 ];
 
-function pickEvalPhrase() {
-  return EVAL_PHRASES[Math.floor(Math.random() * EVAL_PHRASES.length)];
+function pickEvalPhrase(exclude) {
+  const pool = exclude ? EVAL_PHRASES.filter((p) => p !== exclude) : EVAL_PHRASES;
+  return pool[Math.floor(Math.random() * pool.length)];
 }
 
 function getTimeLimitMs(questionLimit) {
@@ -304,6 +305,7 @@ export default function InterviewRoomPage() {
   const [showLeaveModal, setShowLeaveModal] = useState(false);
   const [pauseOffset, setPauseOffset] = useState(0);
   const [evalPhrase, setEvalPhrase] = useState('');
+  const [pendingAnswer, setPendingAnswer] = useState('');
 
   const { autoSpeak } = useSpeechSettings();
   const speech = useSpeechSynthesis();
@@ -437,13 +439,15 @@ export default function InterviewRoomPage() {
 
   const submit = async () => {
     if (!answer.trim() || sending) return;
+    const submitted = answer;
     setSending(true);
     setEvalPhrase(pickEvalPhrase());
+    setPendingAnswer(submitted);
+    setAnswer('');
     speech.stop();
     recognition.stop();
     try {
-      const res = await interview.answer(sessionId, answer);
-      setAnswer('');
+      const res = await interview.answer(sessionId, submitted);
       if (res.data.interviewEnded) {
         router.push(`/history/${sessionId}`);
       } else {
@@ -451,10 +455,19 @@ export default function InterviewRoomPage() {
       }
     } catch (err) {
       setError(err.message);
+      setAnswer(submitted);
     } finally {
       setSending(false);
+      setPendingAnswer('');
     }
   };
+
+  // Cycle the playful "thinking" phrase every couple of seconds while evaluating.
+  useEffect(() => {
+    if (!sending) return;
+    const id = setInterval(() => setEvalPhrase((prev) => pickEvalPhrase(prev)), 2000);
+    return () => clearInterval(id);
+  }, [sending]);
 
   // Re-arm auto-speak when it is switched back on (not on initial mount) so the
   // current question reads out, without a spurious double-speak under StrictMode.
@@ -468,6 +481,8 @@ export default function InterviewRoomPage() {
   // double-invoked effects, and speak() cancels any prior utterance first.
   useEffect(() => {
     if (!autoSpeak || !isActive) return;
+    // On iOS speech can't start before the first tap; wait for the unlock.
+    if (!speech.unlocked) return;
     // Wait for the async voice list so the female voice is applied on first play.
     if (speech.supported && speech.voices.length === 0) return;
     const content = data?.currentQuestion?.content;
@@ -479,6 +494,7 @@ export default function InterviewRoomPage() {
   }, [
     autoSpeak,
     isActive,
+    speech.unlocked,
     speech.supported,
     speech.voices.length,
     data?.currentQuestion?.content,
@@ -746,6 +762,19 @@ export default function InterviewRoomPage() {
                       Auto-speak on
                     </span>
                   )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Optimistic user message — appears immediately on send, before the
+              server round-trip, so the textarea clears and the reply shows here */}
+          {sending && pendingAnswer && (
+            <div className="flex justify-end fx-enter">
+              <div className="max-w-[85%] min-w-0">
+                <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 mb-1 text-right">You</p>
+                <div className="bg-brand-600 text-white text-sm leading-relaxed p-3 rounded-xl rounded-br-sm whitespace-pre-wrap">
+                  {pendingAnswer}
                 </div>
               </div>
             </div>

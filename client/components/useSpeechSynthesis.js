@@ -86,12 +86,47 @@ export function useSpeechSynthesis() {
   const speakTimerRef = useRef(null);
   const mountedRef = useRef(true);
 
+  // iOS/iPadOS only allows speech to begin inside a user gesture, so the first
+  // utterance must be "unlocked" by a tap. Everywhere else the engine is ready
+  // immediately and this is a no-op.
+  const requiresGesture =
+    typeof navigator !== 'undefined' &&
+    (/iP(hone|od|ad)/.test(navigator.userAgent || '') ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
+  const [unlocked, setUnlocked] = useState(!requiresGesture);
+
   useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
     };
   }, []);
+
+  // Prime the speech engine on the first user interaction (mobile Safari).
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+    if (unlocked) return;
+    const synth = window.speechSynthesis;
+    const unlock = () => {
+      try {
+        synth.resume();
+        const primer = new SpeechSynthesisUtterance(' ');
+        primer.volume = 0;
+        synth.speak(primer);
+      } catch {
+        // ignore
+      }
+      setUnlocked(true);
+    };
+    window.addEventListener('pointerdown', unlock);
+    window.addEventListener('touchend', unlock);
+    window.addEventListener('keydown', unlock);
+    return () => {
+      window.removeEventListener('pointerdown', unlock);
+      window.removeEventListener('touchend', unlock);
+      window.removeEventListener('keydown', unlock);
+    };
+  }, [unlocked]);
 
   // Feature-detect and load voices, including the asynchronous `voiceschanged`
   // event (Chrome returns an empty list on first call).
@@ -144,6 +179,7 @@ export function useSpeechSynthesis() {
       const synth = window.speechSynthesis;
 
       // Always drop any in-flight utterance so a new question never overlaps.
+      const wasActive = synth.speaking || synth.pending;
       synth.cancel();
       if (speakTimerRef.current) clearTimeout(speakTimerRef.current);
 
@@ -171,13 +207,29 @@ export function useSpeechSynthesis() {
       utteranceRef.current = utter;
       setActiveText(clean);
 
-      // Chrome/Safari can silently drop a speak() issued in the same tick as a
-      // cancel(); deferring one short tick makes the handoff reliable.
-      speakTimerRef.current = setTimeout(() => {
-        speakTimerRef.current = null;
+      const fire = () => {
         if (!mountedRef.current) return;
+        // Mobile Safari can leave the engine paused; nudge it before speaking.
+        try {
+          synth.resume();
+        } catch {
+          // ignore
+        }
         synth.speak(utter);
-      }, 60);
+      };
+
+      if (wasActive) {
+        // Chrome/Safari can silently drop a speak() issued in the same tick as
+        // a cancel(); deferring one short tick makes the handoff reliable.
+        speakTimerRef.current = setTimeout(() => {
+          speakTimerRef.current = null;
+          fire();
+        }, 60);
+      } else {
+        // Nothing was playing, so speak immediately — keeping the call inside
+        // the user gesture that triggered it (required by mobile browsers).
+        fire();
+      }
     },
     [selectedVoice, rate, reset]
   );
@@ -214,6 +266,7 @@ export function useSpeechSynthesis() {
 
   return {
     supported,
+    unlocked,
     voices,
     selectedVoice,
     voiceURI,
