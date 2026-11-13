@@ -278,8 +278,14 @@ export function TypeBadge({ type }) {
 // ==========================================
 // Modal & Delete Dialog
 // ==========================================
-export function Modal({ open, onClose, title, description, children }) {
+export function Modal({ open, onClose, title, description, children, size = 'md' }) {
   const [mounted, setMounted] = useState(false);
+  const sizeClass = {
+    md: 'max-w-md',
+    lg: 'max-w-2xl',
+    xl: 'max-w-4xl',
+    full: 'max-w-6xl',
+  }[size] || 'max-w-md';
 
   useEffect(() => {
     setMounted(true);
@@ -308,7 +314,7 @@ export function Modal({ open, onClose, title, description, children }) {
       onClick={(e) => { if (e.target === e.currentTarget) onClose?.(); }}
     >
       <div
-        className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl w-full max-w-md p-6 relative"
+        className={`bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl w-full ${sizeClass} p-6 relative`}
       >
         {title && (
           <h3 id="modal-title" className="text-lg font-bold text-slate-900 dark:text-slate-100 mb-1">

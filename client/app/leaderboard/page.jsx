@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { leaderboard } from '../../lib/api';
-import { Button, Card } from '../../components/ui';
+import { Button, Card, Modal } from '../../components/ui';
+import CompareUsers from '../../components/CompareUsers';
 import TopNav from '../../components/TopNav';
 import { useAuth } from '../../components/AuthProvider';
 
@@ -18,6 +19,11 @@ const Icons = {
   chart: (
     <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
+    </svg>
+  ),
+  compare: (
+    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" />
     </svg>
   ),
 };
@@ -78,8 +84,15 @@ export default function LeaderboardPage() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [compareOpen, setCompareOpen] = useState(false);
+  const [compareWith, setCompareWith] = useState(null);
   const currentUser = user?.username || null;
   const loadedRef = useRef(false);
+
+  const openCompare = (username = null) => {
+    setCompareWith(username);
+    setCompareOpen(true);
+  };
 
   // Load once per mount (dev StrictMode double-invokes effects — guard so the
   // public leaderboard request is never fired twice).
@@ -122,12 +135,19 @@ export default function LeaderboardPage() {
               Top candidates ranked by overall average interview performance.
             </p>
           </div>
-          {currentUser && (
-            <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
-              <span className="w-2 h-2 rounded-full bg-brand-500 animate-pulse" />
-              Signed in as <span className="font-semibold text-slate-900 dark:text-slate-100">{currentUser}</span>
-            </div>
-          )}
+          <div className="flex items-center gap-3 flex-wrap">
+            {rows.length >= 2 && (
+              <Button variant="primary" size="sm" onClick={() => openCompare(null)} icon={Icons.compare}>
+                Compare
+              </Button>
+            )}
+            {currentUser && (
+              <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+                <span className="w-2 h-2 rounded-full bg-brand-500 animate-pulse" />
+                Signed in as <span className="font-semibold text-slate-900 dark:text-slate-100">{currentUser}</span>
+              </div>
+            )}
+          </div>
         </section>
 
         {/* ─── Error banner (only when stale rows are still shown below) ─── */}
@@ -251,10 +271,21 @@ export default function LeaderboardPage() {
                         </div>
                       </div>
 
-                      {/* Score */}
-                      <div className="text-right flex-shrink-0">
-                        <p className="text-lg font-extrabold tracking-tight text-slate-900 dark:text-slate-100">{row.averageScore}</p>
-                        <p className="text-[10px] text-slate-400 dark:text-slate-500">avg</p>
+                      {/* Score + compare */}
+                      <div className="flex items-center gap-3 flex-shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => openCompare(row.username)}
+                          aria-label={`Compare with ${row.username}`}
+                          className="hidden sm:inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
+                        >
+                          {Icons.compare}
+                          Compare
+                        </button>
+                        <div className="text-right flex-shrink-0">
+                          <p className="text-lg font-extrabold tracking-tight text-slate-900 dark:text-slate-100">{row.averageScore}</p>
+                          <p className="text-[10px] text-slate-400 dark:text-slate-500">avg</p>
+                        </div>
                       </div>
                     </div>
                   );
@@ -264,6 +295,19 @@ export default function LeaderboardPage() {
           </>
         )}
       </main>
+
+      {/* ─── Compare Users modal ─── */}
+      <Modal
+        open={compareOpen}
+        onClose={() => setCompareOpen(false)}
+        title="Compare Users"
+        description="Head-to-head skill breakdown across categories and competencies."
+        size="xl"
+      >
+        {rows.length >= 2 && (
+          <CompareUsers rows={rows} currentUser={currentUser} initialB={compareWith} />
+        )}
+      </Modal>
     </div>
   );
 }
