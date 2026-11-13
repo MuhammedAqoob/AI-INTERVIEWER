@@ -89,9 +89,20 @@ const DEMO_QUESTION =
 const DEMO_ANSWER =
   "TCP is connection-oriented and ensures reliable delivery with ordering, while UDP is connectionless and faster but doesn't guarantee delivery...";
 
-function HeroMockup({ mode = 'load' }) {
+function HeroMockup({ mode = 'load', delay = 0 }) {
   const gated = mode === 'inview';
   const { ref: gateRef, className: gateState, playing } = useInViewPlay({ enabled: gated });
+
+  // Optional start delay (ms) so a below-the-copy placement can wait for the
+  // hero copy/CTAs above it to finish animating before the demo begins — still
+  // triggered on load, never on scroll.
+  const [ready, setReady] = useState(delay === 0);
+
+  useEffect(() => {
+    if (delay === 0) return;
+    const t = setTimeout(() => setReady(true), delay);
+    return () => clearTimeout(t);
+  }, [delay]);
 
   // ─── Cinematic looping demo timeline ───
   // One staged sequence for both placements; only the trigger differs:
@@ -108,9 +119,10 @@ function HeroMockup({ mode = 'load' }) {
   useEffect(() => {
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     if (gated && !playing) return; // wait until the card actually enters the viewport
+    if (!ready) return; // wait for the optional start delay to elapse
     const t = setTimeout(() => setCycle((c) => c + 1), 10000); // replay the demo
     return () => clearTimeout(t);
-  }, [cycle, gated, playing]);
+  }, [cycle, gated, playing, ready]);
 
   // `c(loadClass, gateClass)` picks the animation classes for the current mode.
   const c = (loadClass, gateClass) => (gated ? gateClass : loadClass);
@@ -136,7 +148,7 @@ function HeroMockup({ mode = 'load' }) {
   return (
     <div
       ref={gateRef}
-      className={`relative mx-auto max-w-lg w-full ${gated ? `demo-gated-root ${gateState}` : 'fx-enter-zoom'}`}
+      className={`relative mx-auto max-w-lg w-full ${gated ? `demo-gated-root ${gateState}` : ready ? 'fx-enter-zoom' : 'opacity-0'}`}
       style={gated ? undefined : fd('0.06s')}
     >
       {/* Glow behind card */}
@@ -158,7 +170,8 @@ function HeroMockup({ mode = 'load' }) {
         </div>
 
         {/* Mockup messages — keyed by cycle so the whole demo replays on loop */}
-        <div key={cycle} className="px-6 pt-7 pb-5">
+        {ready && (
+          <div key={cycle} className="px-6 pt-7 pb-5">
           {/* AI question — card materializes quickly, then its text types in word by word */}
           <div className={`flex gap-3 ${c('fx-materialize', 'demo-child demo-child-materialize')}`} style={fd('0.15s')}>
             <div className="w-8 h-8 rounded-full bg-brand-600 flex items-center justify-center flex-shrink-0">
@@ -230,6 +243,7 @@ function HeroMockup({ mode = 'load' }) {
             </div>
           </div>
         </div>
+        )}
       </div>
     </div>
   );
@@ -450,9 +464,10 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Mobile mockup (below copy on small screens) — plays on page load */}
-          <div className="mt-12 lg:hidden">
-            <HeroMockup mode="load" />
+          {/* Mobile mockup (below copy on small screens) — starts on load, but
+              only after the hero copy/CTAs above it have finished animating */}
+          <div className="mt-12 lg:hidden min-h-[26rem]">
+            <HeroMockup mode="load" delay={1000} />
           </div>
         </div>
       </section>
