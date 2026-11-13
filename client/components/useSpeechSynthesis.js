@@ -70,6 +70,17 @@ function pickBestVoice(voices) {
   return [...voices].sort((a, b) => scoreVoice(b) - scoreVoice(a))[0] || null;
 }
 
+// In-app / embedded browsers (Instagram, Facebook, Messenger, TikTok, …) and
+// raw Android WebViews frequently ship without a working Web Speech engine or
+// block audio until a gesture, so the interviewer voice never plays there.
+function detectInAppBrowser() {
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent || '';
+  return /Instagram|FBAN|FBAV|FB_IAB|Messenger|Line\/|MicroMessenger|TikTok|BytedanceWebview|Twitter|LinkedInApp|Snapchat|Pinterest|GSA\/|; wv\)/i.test(
+    ua
+  );
+}
+
 /**
  * Browser-native Text-to-Speech controller built on the Web Speech API.
  * Manages voice discovery, a single active utterance and play/pause/stop/replay.
@@ -94,6 +105,7 @@ export function useSpeechSynthesis() {
     (/iP(hone|od|ad)/.test(navigator.userAgent || '') ||
       (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
   const [unlocked, setUnlocked] = useState(!requiresGesture);
+  const [inAppBrowser] = useState(() => detectInAppBrowser());
 
   useEffect(() => {
     mountedRef.current = true;
@@ -267,6 +279,7 @@ export function useSpeechSynthesis() {
   return {
     supported,
     unlocked,
+    inAppBrowser,
     voices,
     selectedVoice,
     voiceURI,

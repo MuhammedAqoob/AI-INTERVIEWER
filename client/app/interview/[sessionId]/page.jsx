@@ -561,6 +561,10 @@ export default function InterviewRoomPage() {
 
   const primaryLabel = aiSpeaking ? 'Pause question' : speech.paused ? 'Resume question' : 'Play question';
 
+  // Voice can't play in in-app/embedded browsers or where the Web Speech API is
+  // missing — surface a gentle nudge to open the page in a full browser.
+  const voiceLimited = !speech.supported || speech.inAppBrowser;
+
   return (
     <div className="flex flex-col lg:flex-row h-[100dvh] overflow-hidden bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
       {/* ═══ LEFT: Live voice stage ═══ */}
@@ -698,6 +702,18 @@ export default function InterviewRoomPage() {
 
         {/* Message feed */}
         <div ref={feedRef} className="flex-1 min-h-0 overflow-y-auto px-4 py-3 space-y-4 sm:px-5 sm:py-4 sm:space-y-5">
+          {voiceLimited && !isCompleted && (
+            <div className="flex items-start gap-2.5 p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300 text-xs leading-relaxed">
+              <svg className="w-4 h-4 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+              </svg>
+              <span>
+                The interviewer&apos;s voice can&apos;t play in this in-app browser.
+                Tap the <strong>⋯</strong> menu and choose <strong>Open in browser</strong> (Safari/Chrome) to hear it — everything else works here.
+              </span>
+            </div>
+          )}
+
           {error && (
             <div role="alert" className="p-3 bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 rounded-xl text-xs">
               {error}
