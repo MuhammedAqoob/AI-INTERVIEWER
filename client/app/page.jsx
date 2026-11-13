@@ -450,9 +450,9 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Mobile mockup (below copy on small screens) */}
+          {/* Mobile mockup (below copy on small screens) — plays on page load */}
           <div className="mt-12 lg:hidden">
-            <HeroMockup mode="inview" />
+            <HeroMockup mode="load" />
           </div>
         </div>
       </section>
