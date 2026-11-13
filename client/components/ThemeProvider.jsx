@@ -3,19 +3,19 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 
 const ThemeContext = createContext({
-  theme: 'system',
+  theme: 'light',
   resolvedTheme: 'light',
   setTheme: () => {},
   toggleTheme: () => {},
 });
 
 export function ThemeProvider({ children }) {
-  const [theme, setThemeState] = useState('system');
+  const [theme, setThemeState] = useState('light');
   const [resolvedTheme, setResolvedTheme] = useState('light');
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    const saved = localStorage.getItem('theme') || 'system';
+    const saved = localStorage.getItem('theme') || 'light';
     setThemeState(saved);
     setMounted(true);
   }, []);

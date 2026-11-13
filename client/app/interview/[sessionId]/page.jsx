@@ -1,10 +1,128 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { interview } from '../../../lib/api';
 import { Spinner, DifficultyBadge, Button, Textarea, Modal, Card } from '../../../components/ui';
 import { useAuth } from '../../../components/AuthProvider';
+
+// Time limit: 2 minutes per question
+const MINUTES_PER_QUESTION = 2;
+
+function getTimeLimitMs(questionLimit) {
+  return questionLimit * MINUTES_PER_QUESTION * 60 * 1000;
+}
+
+// ── Pause-aware countdown bookkeeping ────────────────────────────────
+// The backend only stores `startedAt`, so paused wall-clock time would keep
+// counting against the user. We freeze it client-side by accumulating the
+// paused duration per session in localStorage and subtracting it from elapsed.
+const pauseKey = (sessionId) => `interview-pause:${sessionId}`;
+
+function readPauseState(sessionId) {
+  if (typeof window === 'undefined') return { pausedMs: 0, pausedAt: null };
+  try {
+    const raw = window.localStorage.getItem(pauseKey(sessionId));
+    if (!raw) return { pausedMs: 0, pausedAt: null };
+    const parsed = JSON.parse(raw);
+    return {
+      pausedMs: Number(parsed?.pausedMs) || 0,
+      pausedAt: typeof parsed?.pausedAt === 'number' ? parsed.pausedAt : null,
+    };
+  } catch {
+    return { pausedMs: 0, pausedAt: null };
+  }
+}
+
+function writePauseState(sessionId, state) {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(pauseKey(sessionId), JSON.stringify(state));
+  } catch {
+    // Storage unavailable — timer simply runs without freeze.
+  }
+}
+
+// Fold any in-progress pause into the accumulated total and return it.
+function settlePause(sessionId) {
+  const state = readPauseState(sessionId);
+  if (state.pausedAt) {
+    state.pausedMs += Date.now() - state.pausedAt;
+    state.pausedAt = null;
+    writePauseState(sessionId, state);
+  }
+  return state.pausedMs;
+}
+
+function markPaused(sessionId) {
+  const state = readPauseState(sessionId);
+  state.pausedAt = Date.now();
+  writePauseState(sessionId, state);
+}
+
+function clearPauseState(sessionId) {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.removeItem(pauseKey(sessionId));
+  } catch {
+    // ignore
+  }
+}
+
+function formatTime(seconds) {
+  if (seconds <= 0) return '0:00';
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+function Timer({ startedAt, questionLimit, onTimeUp, isActive, pauseOffsetMs = 0 }) {
+  const [remaining, setRemaining] = useState(null);
+  const endedRef = useRef(false);
+
+  useEffect(() => {
+    if (!startedAt || !isActive) return;
+
+    const start = new Date(startedAt).getTime();
+    const limit = getTimeLimitMs(questionLimit);
+
+    const tick = () => {
+      const elapsed = Date.now() - start - pauseOffsetMs;
+      const left = Math.max(0, Math.ceil((limit - elapsed) / 1000));
+      setRemaining(left);
+      if (left <= 0 && !endedRef.current) {
+        endedRef.current = true;
+        onTimeUp();
+      }
+    };
+
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [startedAt, questionLimit, onTimeUp, isActive, pauseOffsetMs]);
+
+  if (remaining === null || !isActive) return null;
+
+  const totalSeconds = getTimeLimitMs(questionLimit) / 1000;
+  const pct = remaining / totalSeconds;
+  const isLow = pct < 0.2;
+  const isCritical = pct < 0.1;
+
+  return (
+    <div className={`flex items-center gap-1.5 text-xs font-mono font-bold px-2.5 py-1 rounded-full border ${
+      isCritical
+        ? 'text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/60 border-rose-300 dark:border-rose-700 animate-pulse'
+        : isLow
+          ? 'text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/60 border-amber-300 dark:border-amber-700'
+          : 'text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700'
+    }`}>
+      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+      {formatTime(remaining)}
+    </div>
+  );
+}
 
 function BetterAnswer({ betterAnswer }) {
   const [open, setOpen] = useState(false);
@@ -34,8 +152,9 @@ export default function InterviewRoomPage() {
   const [answer, setAnswer] = useState('');
   const [sending, setSending] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
-  const [showLeaveModal, setShowLeaveModal] = useState(false);
   const [error, setError] = useState('');
+  const [showLeaveModal, setShowLeaveModal] = useState(false);
+  const [pauseOffset, setPauseOffset] = useState(0);
 
   const isCompleted = data?.status === 'COMPLETED';
   const isPaused = data?.status === 'PAUSED';
@@ -43,6 +162,9 @@ export default function InterviewRoomPage() {
 
   const load = async () => {
     setError('');
+    // Fold any pending pause (from a previous "Pause & Leave") into the offset
+    // before resuming, so paused time does not count against the countdown.
+    setPauseOffset(settlePause(sessionId));
     try {
       let res = await interview.details(sessionId);
       if (res.data.status === 'PAUSED') {
@@ -65,11 +187,23 @@ export default function InterviewRoomPage() {
     load();
   }, [sessionId]);
 
+  const handleTimeUp = useCallback(async () => {
+    try {
+      const res = await interview.end(sessionId);
+      clearPauseState(sessionId);
+      router.push(`/history/${res.data.sessionId || sessionId}`);
+    } catch {
+      setError('Time is up! Session has been completed.');
+      await load();
+    }
+  }, [sessionId, router, load]);
+
   const handlePauseAndLeave = async () => {
     setActionLoading(true);
     try {
       if (isActive) {
         await interview.pause(sessionId);
+        markPaused(sessionId);
       }
       router.push('/dashboard');
     } catch (err) {
@@ -84,6 +218,7 @@ export default function InterviewRoomPage() {
     setActionLoading(true);
     try {
       const res = await interview.end(sessionId);
+      clearPauseState(sessionId);
       router.push(`/history/${res.data.sessionId || sessionId}`);
     } catch (err) {
       setError(err.message || 'Failed to complete session.');
@@ -97,6 +232,7 @@ export default function InterviewRoomPage() {
     setActionLoading(true);
     try {
       await interview.delete(sessionId);
+      clearPauseState(sessionId);
       router.push('/dashboard');
     } catch (err) {
       setError(err.message || 'Failed to delete session.');
@@ -203,6 +339,13 @@ export default function InterviewRoomPage() {
           )}
 
           <div className="flex items-center gap-2">
+            <Timer
+              startedAt={data.startedAt}
+              questionLimit={data.questionLimit}
+              onTimeUp={handleTimeUp}
+              isActive={isActive}
+              pauseOffsetMs={pauseOffset}
+            />
             <span className="text-xs font-semibold px-2.5 py-1 bg-brand-50 dark:bg-brand-950 text-brand-700 dark:text-brand-300 rounded-full border border-brand-200/60 dark:border-brand-800/60">
               {data.interviewType}
             </span>

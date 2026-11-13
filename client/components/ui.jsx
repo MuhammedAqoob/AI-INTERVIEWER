@@ -1,6 +1,7 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 // ==========================================
 // Spinner Component
@@ -278,17 +279,36 @@ export function TypeBadge({ type }) {
 // Modal & Delete Dialog
 // ==========================================
 export function Modal({ open, onClose, title, description, children }) {
-  if (!open) return null;
+  const [mounted, setMounted] = useState(false);
 
-  return (
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e) => { if (e.key === 'Escape') onClose?.(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
+
+  // Rendered in a portal on <body> so it escapes any ancestor with a CSS
+  // transform (e.g. the .page-enter route-transition wrapper). A transformed
+  // ancestor becomes the containing block for position:fixed, which would
+  // otherwise center the modal on the whole page height instead of the viewport.
+  if (!open || !mounted) return null;
+
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm transition-opacity animate-in fade-in duration-200"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ backgroundColor: 'rgba(15, 23, 42, 0.6)' }}
       role="dialog"
       aria-modal="true"
       aria-labelledby="modal-title"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose?.(); }}
     >
       <div
-        className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl w-full max-w-md p-6 relative transition-transform animate-in zoom-in-95 duration-200"
+        className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl w-full max-w-md p-6 relative"
       >
         {title && (
           <h3 id="modal-title" className="text-lg font-bold text-slate-900 dark:text-slate-100 mb-1">
@@ -302,7 +322,8 @@ export function Modal({ open, onClose, title, description, children }) {
         )}
         {children}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
